@@ -8,13 +8,16 @@ Source of truth for backlog items.
 - Competitive: [docs/COMPETITIVE-LANDSCAPE.md](./docs/COMPETITIVE-LANDSCAPE.md)  
 - Wallets + buy BTC: [docs/WALLETS-AND-ONRAMP-2026.md](./docs/WALLETS-AND-ONRAMP-2026.md)
 
-### Brand / domain
+### Brand / domain / Coolify
 
 - [x] **B1a** — Register **giftbitcoin.app**
-- [ ] **B1b** — DNS → static host (Cloudflare Pages / Netlify / etc.) + HTTPS
-- [ ] **B2** — Production claim URL base `https://giftbitcoin.app/c#…` in package templates (on deploy)
+- [x] **B1c** — Coolify app on Thinkstation (uuid `jdhe9b54fe70iddhxr351sml`, running:healthy)
+- [x] **B1d** — Interim HTTPS: https://giftbitcoin.greerso.com
+- [ ] **B1b** — Cloudflare DNS for apex/www → `97.81.152.131` (dashboard; API token lacks DNS write)
+- [ ] **B2** — Production claim URL base `https://giftbitcoin.app/c#…` in package templates (after DNS)
 - [ ] **B3** — Optional: email link previews / OG (no secrets in unfurls)
-- [ ] **B4** — Confirm registrar DNSSEC / email (if any) for brand mail later
+- [ ] **B4** — Optional: CF tunnel hostname if using tunnel instead of A record
+- [ ] **B5** — Auto-deploy webhook main → Coolify (optional)
 
 ---
 

@@ -4,7 +4,9 @@
 |-------|--------|
 | **Product name** | Gift Bitcoin |
 | **Primary domain** | **[giftbitcoin.app](https://giftbitcoin.app)** |
-| **Domain status** | **Registered** (2026-07-11) |
+| **Domain status** | **Registered** (2026-07-11); Coolify app live; public DNS for apex pending |
+| **Coolify** | Thinkstation app `jdhe9b54fe70iddhxr351sml` — see [DEPLOY.md](./DEPLOY.md) |
+| **Interim URL** | https://giftbitcoin.greerso.com |
 | **Repo / package** | `BTCGiftcard` / `btcgiftcard` (technical; may differ from public name) |
 | **Brand locked** | 2026-07-11 |
 

@@ -30,7 +30,8 @@ npm run build   # static site → build/
 
 - **Done:** crypto core, golden vectors, create gift address + packages UI, claim secret derivation, static build.
 - **Next:** Esplora fund watch, claim broadcast, refund path, destination chooser, offline HTML.
-- **Production domain:** **giftbitcoin.app** (registered; DNS → host still pending).
+- **Production:** Coolify on Thinkstation — **https://giftbitcoin.greerso.com** (live).  
+  **giftbitcoin.app** DNS still needs A/CNAME in Cloudflare (see [docs/DEPLOY.md](./docs/DEPLOY.md)).
 
 ## Disclaimer
 

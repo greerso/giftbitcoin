@@ -1,0 +1,33 @@
+{
+	"name": "btcgiftcard",
+	"private": true,
+	"version": "0.1.0-testnet",
+	"type": "module",
+	"scripts": {
+		"dev": "vite dev",
+		"build": "vite build",
+		"preview": "vite preview",
+		"prepare": "svelte-kit sync || echo ''",
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"test": "vitest run",
+		"test:watch": "vitest"
+	},
+	"devDependencies": {
+		"@sveltejs/adapter-static": "^3.0.8",
+		"@sveltejs/kit": "^2.63.0",
+		"@sveltejs/vite-plugin-svelte": "^5.0.3",
+		"@types/node": "^22.13.10",
+		"svelte": "^5.20.0",
+		"svelte-check": "^4.1.4",
+		"typescript": "^5.8.2",
+		"vite": "^6.2.2",
+		"vitest": "^3.0.9"
+	},
+	"dependencies": {
+		"@noble/curves": "^1.8.1",
+		"@noble/hashes": "^1.7.1",
+		"@scure/base": "^1.2.4",
+		"@scure/btc-signer": "^1.6.0",
+		"hash-wasm": "^4.12.0"
+	}
+}

@@ -1,4 +1,4 @@
-# Deploy — giftbitcoin.app on Coolify (Thinkstation)
+# Deploy — giftbitcoin.app on Coolify + Cloudflare Tunnel
 
 ## Status (2026-07-11)
 
@@ -11,52 +11,77 @@
 | App UUID | `jdhe9b54fe70iddhxr351sml` |
 | App name | Gift Bitcoin |
 | Git | https://github.com/greerso/giftbitcoin (`main`) |
-| Build | Dockerfile → nginx:alpine serves `/build` on port **80** |
-| Status | **running:healthy** |
+| Build | Dockerfile → nginx on port **80** |
+| App status | **running:healthy** |
+| **CF Tunnel** | **magnolia-thinkstation** `45ab2a45-9512-46f8-bae4-0c882e02df73` |
+| Tunnel service | Coolify service `ipnqsixmv1abryxvyhkl2fky` (cloudflared) |
+
+### Tunnel ingress (done)
+
+Public hostnames on the Coolify tunnel → Traefik on the host:
+
+| Hostname | Origin |
+|----------|--------|
+| `giftbitcoin.app` | `http://localhost:80` |
+| `www.giftbitcoin.app` | `http://localhost:80` |
+
+Same pattern as other Coolify apps (Host header → Traefik → container).
 
 ### Live URLs
 
 | URL | Notes |
 |-----|--------|
-| https://giftbitcoin.greerso.com | **Works now** (Let’s Encrypt via greerso DNS) |
-| https://giftbitcoin.app | Needs DNS A/CNAME (see below) |
+| https://giftbitcoin.greerso.com | Works (direct / LE on greerso DNS) |
+| https://giftbitcoin.app | **Needs DNS CNAME → tunnel** (see below) |
 | https://www.giftbitcoin.app | Same |
 
-## DNS for giftbitcoin.app (Cloudflare)
+---
 
-Zone is on Cloudflare (`dba6efb7533a41932c75f62ce37e4391`).  
-Local API token can **list the zone** but **cannot create DNS records** (auth error on `/dns_records`). Add in the dashboard:
+## DNS (Cloudflare) — required for giftbitcoin.app
 
-1. [Cloudflare Dashboard](https://dash.cloudflare.com) → **giftbitcoin.app** → **DNS** → **Records**
-2. **A** `@` → `97.81.152.131` (Thinkstation public / greerso.ddns.net)  
-   - Start **DNS only** (grey cloud) so Coolify Let’s Encrypt HTTP-01 can complete  
-   - After cert is healthy, optional: enable **Proxied** (orange) + SSL mode **Full (strict)**
-3. **CNAME** `www` → `giftbitcoin.app` (same proxy setting as apex)
+API token used here **cannot write DNS** on the `giftbitcoin.app` zone (auth error), even though tunnel config API works. Add records in the [Cloudflare Dashboard](https://dash.cloudflare.com) → **giftbitcoin.app** → **DNS**:
 
-Alternative (tunnel-style, like magnolia.photos): CNAME apex to  
-`45ab2a45-9512-46f8-bae4-0c882e02df73.cfargotunnel.com`  
-and add a public hostname on the **magnolia-thinkstation** tunnel → `http://localhost:80` (Traefik) with Host `giftbitcoin.app`. Requires Zero Trust / tunnel config edit.
+| Type | Name | Content | Proxy |
+|------|------|---------|--------|
+| **CNAME** | `@` | `45ab2a45-9512-46f8-bae4-0c882e02df73.cfargotunnel.com` | **Proxied** (orange) |
+| **CNAME** | `www` | `45ab2a45-9512-46f8-bae4-0c882e02df73.cfargotunnel.com` | **Proxied** (orange) |
 
-### After DNS propagates
+Do **not** use a public A record to the home IP for this setup — traffic should go through the Coolify **Cloudflare Tunnel** service.
+
+After DNS propagates:
 
 ```bash
-coolify deploy uuid jdhe9b54fe70iddhxr351sml   # refresh certs if needed
+dig +short giftbitcoin.app CNAME   # expect …cfargotunnel.com or CF flats
 curl -sI https://giftbitcoin.app
+coolify deploy uuid jdhe9b54fe70iddhxr351sml   # if cert/router needs refresh
 ```
+
+SSL: Cloudflare edge terminates HTTPS; origin is HTTP to Traefik on the tunnel host. Coolify may still issue a LE cert for Traefik; tunnel uses Host-based routing either way.
+
+---
+
+## Architecture
+
+```text
+Browser → Cloudflare (HTTPS, orange cloud)
+       → Tunnel magnolia-thinkstation
+       → http://localhost:80 (Traefik on Thinkstation)
+       → Gift Bitcoin container :80 (nginx static)
+```
+
+---
 
 ## Redeploy
 
 ```bash
-coolify --context Thinkstation deploy uuid jdhe9b54fe70iddhxr351sml
-# or after git push to main:
 git push origin main
-coolify deploy uuid jdhe9b54fe70iddhxr351sml
+coolify --context Thinkstation deploy uuid jdhe9b54fe70iddhxr351sml
 ```
 
-## Local / repo
+## Local
 
 ```bash
-cd ~/dev/BTCGiftcard   # same as giftbitcoin git remote
+cd ~/dev/BTCGiftcard
 npm run dev
 npm test
 npm run build

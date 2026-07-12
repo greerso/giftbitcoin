@@ -1,9 +1,10 @@
 // tests/worker/send.test.ts
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import * as btc from '@scure/btc-signer';
 import { createGift } from '../../src/lib/crypto/create-gift';
 import { buildPackages, fullClaimLink, claimLinkWithPassphrase } from '../../src/lib/gift-package';
-import { validateSend } from '../../worker/src/send';
+import { validateSend, verifyTurnstile, checkFunded, sha256Hex } from '../../worker/src/send';
+import { stubFetch } from '../lib/helpers';
 import type { SendEnv } from '../../worker/src/types';
 
 const env = {
@@ -92,4 +93,39 @@ describe('validateSend', () => {
 		alt.network = 'mainnet';
 		expect(validateSend({ to: 'a@b.co', link: fullClaimLink(alt, env.ALLOWED_ORIGIN), turnstile_token: 't' }, env)).toMatchObject({ status: 400 });
 	}, 30_000);
+});
+
+describe('worker gates', () => {
+	afterEach(() => vi.unstubAllGlobals());
+
+	it('verifyTurnstile: success, failure, and fetch-error → false', async () => {
+		stubFetch({ '/siteverify': () => new Response(JSON.stringify({ success: true })) });
+		expect(await verifyTurnstile('tok', '1.2.3.4', 'sec')).toBe(true);
+		stubFetch({ '/siteverify': () => new Response(JSON.stringify({ success: false })) });
+		expect(await verifyTurnstile('tok', '1.2.3.4', 'sec')).toBe(false);
+		vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('net'); }));
+		expect(await verifyTurnstile('tok', '1.2.3.4', 'sec')).toBe(false);
+	});
+
+	it('checkFunded: confirmed / unconfirmed / empty', async () => {
+		const env = { ESPLORA_BASE: 'https://esplora.test' } as any;
+		stubFetch({ '/utxo': () => new Response(JSON.stringify([{ value: 1, status: { confirmed: true } }])) });
+		expect(await checkFunded('tb1qaddr', env)).toBe(true);
+		stubFetch({ '/utxo': () => new Response(JSON.stringify([{ value: 1, status: { confirmed: false } }])) });
+		expect(await checkFunded('tb1qaddr', env)).toBe(false);
+		stubFetch({ '/utxo': () => new Response('[]') });
+		expect(await checkFunded('tb1qaddr', env)).toBe(false);
+	});
+
+	it('checkFunded THROWS on esplora failure (fail closed — caller must not email)', async () => {
+		const env = { ESPLORA_BASE: 'https://esplora.test' } as any;
+		stubFetch({ '/utxo': () => new Response('down', { status: 503 }) });
+		await expect(checkFunded('tb1qaddr', env)).rejects.toThrow();
+		vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('timeout'); }));
+		await expect(checkFunded('tb1qaddr', env)).rejects.toThrow();
+	});
+
+	it('sha256Hex is stable', async () => {
+		expect(await sha256Hex('abc')).toBe('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+	});
 });

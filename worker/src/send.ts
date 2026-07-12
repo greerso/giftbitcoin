@@ -71,3 +71,48 @@ export function validateSend(body: unknown, env: SendEnv): ValidSend | SendError
 		return bad('bad_card');
 	}
 }
+
+/** Turnstile siteverify — required gate; any error counts as failure. */
+export async function verifyTurnstile(token: string, ip: string, secret: string): Promise<boolean> {
+	try {
+		const r = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+			method: 'POST',
+			headers: { 'content-type': 'application/x-www-form-urlencoded' },
+			body: new URLSearchParams({ secret, response: token, remoteip: ip })
+		});
+		if (!r.ok) return false;
+		const outcome = (await r.json()) as { success?: boolean };
+		return outcome.success === true;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Server-side funding check: ≥1 confirmed UTXO. Hard 5 s timeout; THROWS on any
+ * esplora failure so the caller fails closed (no email). 60 s Cache API layer
+ * (public chain data keyed on the esplora URL — no link material) absorbs
+ * duplicate taps; absent outside Workers (node tests) → plain fetch.
+ */
+export async function checkFunded(address: string, env: SendEnv): Promise<boolean> {
+	const url = `${env.ESPLORA_BASE}/address/${encodeURIComponent(address)}/utxo`;
+	const cache = (globalThis as unknown as { caches?: { default: Cache } }).caches?.default;
+	let res = await cache?.match(url);
+	if (!res) {
+		res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+		if (!res.ok) throw new Error(`esplora ${res.status}`);
+		if (cache) {
+			const copy = new Response(res.clone().body, res);
+			copy.headers.set('Cache-Control', 'max-age=60');
+			await cache.put(url, copy);
+		}
+	}
+	const utxos = (await res.json()) as Array<{ status?: { confirmed?: boolean } }>;
+	return utxos.some((u) => u.status?.confirmed === true);
+}
+
+/** Rate-limit key for the gift address — the counter never sees the link. */
+export async function sha256Hex(s: string): Promise<string> {
+	const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+	return Array.from(new Uint8Array(d), (b) => b.toString(16).padStart(2, '0')).join('');
+}

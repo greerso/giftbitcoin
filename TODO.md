@@ -179,5 +179,5 @@ Not blocking v1. Each needs an ADR if it changes packages or scripts.
 
 ### Remaining review findings (not in #5)
 
-- [x] `[user decision → approved 2026-07-12]` SPEC amendment: §5.5 offline-claim kit, §14.1 refund signing + donate/custom policies, §10.4 indexer override moved to explicit **v1.1 milestone** (SPEC §14.4, v0.2.6)
-- [ ] Improvements from 2026-07-12 full-codebase review: dust floor by output type (546 for legacy), scure leaf-order finalize dependency (comment/`allowUnknownInputs`), corrupt `g1.` link error message, tip formula vs SPEC §8.1, `ACTIVE_NETWORK` decorative plumbing, `verifyGiftPackage` unused in create flow, secrets-never-sent test, mempool.space-only fee endpoint
+- [x] `[user decision → approved 2026-07-12]` SPEC amendment: §5.5 offline-claim kit, §14.1 refund signing + donate/custom policies, §10.4 indexer override moved to explicit **v1.1 milestone** (SPEC §14.4, v0.2.6) — merged via **#7** (`c84edeb`)
+- [x] Improvements from 2026-07-12 full-codebase review (all 8: per-type dust floor, finalize leaf-order doc, corrupt `g1.` link message, §8.1 tip formula, `ACTIVE_NETWORK` real plumbing, wire-form create self-check, secrets-never-sent test, Esplora fee-estimates fallback) — issue **#8**, merged via **#9** (`9cd6691`, 2026-07-12); tests 36 → 44

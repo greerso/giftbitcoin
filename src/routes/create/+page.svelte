@@ -3,14 +3,19 @@
 	import { goto, beforeNavigate } from '$app/navigation';
 	import { setNav, clearNav } from '$lib/nav.svelte';
 	import { createGift, type CreatedGift } from '$lib/crypto/create-gift';
-	import { buildPackages, fullClaimLink, type GiftPackages } from '$lib/gift-package';
-	import { fetchBtcUsd, usdToBtc, usdToSats, satsToBtc, FALLBACK_BTC_USD } from '$lib/pricing';
+	import {
+		buildPackages,
+		fullClaimLink,
+		parseShareCardFragment,
+		verifyShareCard,
+		type GiftPackages
+	} from '$lib/gift-package';
+	import { fetchBtcUsd, usdToBtc, usdToSats, satsToBtc, tipSats, FALLBACK_BTC_USD } from '$lib/pricing';
 	import { fmtBtc, money } from '$lib/format';
 	import { getUtxos, confirmedValue } from '$lib/esplora';
 	import { T_PRESETS, MIN_GIFT_SATS } from '$config/network';
 	import { CARD_DESIGNS } from '$lib/giftcards';
 	import GiftCard from '$lib/components/GiftCard.svelte';
-	import * as btc from '@scure/btc-signer';
 
 	type Step = 'c1' | 'c3' | 'c4';
 	let step = $state<Step>('c1');
@@ -49,7 +54,9 @@
 	const sats = $derived(usdToSats(usd, price));
 	const btcStr = $derived(fmtBtc(usdToBtc(usd, price)));
 	const amountValid = $derived(usd > 0 && sats >= MIN_GIFT_SATS);
-	const tipUsd = $derived((usd * tipPct) / 100);
+	// SPEC §8.1: tip is normatively floor(gift_sats × pct) — sats first, USD display derived from it.
+	const suggestedTipSats = $derived(tipSats(sats, tipPct));
+	const tipUsd = $derived(satsToBtc(suggestedTipSats) * price);
 	const usdDisplay = $derived(money(usd));
 	const isCustom = $derived(!PRESETS.includes(usdAmount));
 	const fundedBtcStr = $derived(fmtBtc(satsToBtc(fundedSats)));
@@ -117,7 +124,8 @@
 		busy = true;
 		try {
 			cancelPoll(); // kill any poll from a prior address before (re)building
-			const key = { expiry: expiryDays, usePass: usePass && !!passphrase, pass: usePass ? passphrase : '' };
+			const pass = usePass && passphrase ? passphrase : undefined;
+			const key = { expiry: expiryDays, usePass: !!pass, pass: pass ?? '' };
 			// Regenerate keys only if the security params changed — otherwise keep the
 			// existing (possibly-funded) address so a name tweak never orphans funds.
 			if (
@@ -139,15 +147,14 @@
 				gift = await createGift({
 					T: T_PRESETS[`days${expiryDays}` as 'days90'],
 					policy: 'refund_self',
-					passphrase: usePass && passphrase ? passphrase : undefined,
-					network: btc.TEST_NETWORK
+					passphrase: pass
 				});
 				giftKey = key;
 				backedUp = false;
 			}
 			packages = buildPackages(gift, {
 				amountExpectedSats: sats,
-				tipSatsSuggested: usdToSats(tipUsd, price),
+				tipSatsSuggested: suggestedTipSats,
 				memo: message.trim() || undefined,
 				fromName: fromName.trim() || undefined,
 				toName: toName.trim() || undefined,
@@ -155,6 +162,19 @@
 				expiryDays,
 				origin: window.location.origin
 			});
+			// SPEC §5.3 self-check on the artifact that actually ships: round-trip
+			// the claim link exactly as the recipient's page will parse it and
+			// confirm it re-derives the funded script — catches serialization
+			// regressions, not just key math. On passphrase gifts this re-runs the
+			// 64 MiB Argon2id KDF by design; the independent re-derivation IS the check.
+			const link = fullClaimLink(packages.share_card, window.location.origin);
+			const check = await verifyShareCard(parseShareCardFragment(link.slice(link.indexOf('#') + 1)), pass);
+			if (!check.ok) {
+				// Keep `gift` — the address may already be funded from an earlier pass
+				// and the keys must stay recoverable; just never show an unverified package.
+				packages = null;
+				throw new Error('Gift self-check failed (' + check.errors[0] + '). Please try again.');
+			}
 			fundStatus = 'idle';
 			step = 'c3';
 		} catch (e) {

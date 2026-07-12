@@ -32,3 +32,8 @@ export function usdToSats(usd: number, priceUsd: number): number {
 export function satsToBtc(sats: number): number {
 	return sats / 1e8;
 }
+
+/** SPEC §8.1 normative tip: `tip_sats = floor(gift_amount_sats × pct/100)`. */
+export function tipSats(giftSats: number, pct: number): number {
+	return Math.floor((giftSats * pct) / 100);
+}

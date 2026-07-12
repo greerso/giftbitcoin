@@ -38,18 +38,31 @@ export function hasMempool(utxos: Utxo[]): boolean {
 	return utxos.some((u) => !u.status.confirmed);
 }
 
-/** sat/vB; conservative fallback if the fee API is unreachable. */
+/**
+ * sat/vB. The default base (mempool.space) serves /v1/fees/recommended, but a
+ * user-overridden vanilla Esplora (SPEC §10.4) only serves /fee-estimates
+ * (keyed by confirmation target in blocks; ~30 min ≈ 3) — try both shapes so
+ * an override doesn't silently degrade to the floor. Estimates can be
+ * fractional and sub-1 (testnet4 idles at 0.1–0.5); clamp to Core's 1 sat/vB
+ * minrelay floor or the tx can't be broadcast at all.
+ */
+const FEE_SHAPES: Array<[string, (j: Record<string, unknown>) => number]> = [
+	['/v1/fees/recommended', (j) => Number(j?.halfHourFee) || Number(j?.hourFee)],
+	['/fee-estimates', (j) => Number(j?.['3']) || Number(j?.['6'])]
+];
+
 export async function recommendedFeeRate(): Promise<number> {
-	try {
-		const r = await fetch(`${esploraBase()}/v1/fees/recommended`);
-		if (r.ok) {
-			const j = await r.json();
-			return Number(j?.halfHourFee) || Number(j?.hourFee) || 2;
+	for (const [path, pick] of FEE_SHAPES) {
+		try {
+			const r = await fetch(`${esploraBase()}${path}`);
+			if (!r.ok) continue;
+			const rate = pick(await r.json());
+			if (rate > 0) return Math.max(1, rate);
+		} catch {
+			/* try the next shape */
 		}
-	} catch {
-		/* fall through */
 	}
-	return 2;
+	return 2; // conservative floor when no estimator is reachable
 }
 
 /** Broadcast a signed raw tx hex; returns the txid or throws with the node's reason. */

@@ -5,6 +5,7 @@ import * as btc from '@scure/btc-signer';
 import { schnorr } from '@noble/curves/secp256k1';
 import { numsXOnly } from './nums';
 import { bytesToHex } from './keys';
+import { ACTIVE_NETWORK } from '../../config/network';
 
 /** Throw unless `key` is a 32-byte x-only point that lifts on secp256k1 (BIP340). */
 function assertXOnlyOnCurve(key: Uint8Array, name: string): void {
@@ -25,7 +26,7 @@ export interface GiftScriptParams {
 	R: Uint8Array;
 	/** Relative locktime in blocks (BIP68) */
 	T: number;
-	/** scure network object (TEST_NETWORK for testnet4 addresses) */
+	/** scure network object; defaults to the ACTIVE_NETWORK pin (SPEC §14.0) */
 	network?: typeof btc.TEST_NETWORK | typeof btc.NETWORK;
 }
 
@@ -61,7 +62,9 @@ function expiryScript(R: Uint8Array, T: number): Uint8Array {
 }
 
 /**
- * Build gift Taproot payment. Leaf order: claim then expiry (tree may sort; 2-leaf is stable).
+ * Build gift Taproot payment. Leaf order: claim then expiry (tree may sort;
+ * 2-leaf is stable). The claim leaf MUST stay first — claim-tx.ts finalize
+ * depends on encountering it before the unknown-shape CSV leaf.
  */
 export function buildGiftPayment(params: GiftScriptParams): GiftPayment {
 	const { C, R, T } = params;
@@ -74,7 +77,7 @@ export function buildGiftPayment(params: GiftScriptParams): GiftPayment {
 	const nums = numsXOnly();
 	const claimLeaf = claimScript(C);
 	const expiryLeaf = expiryScript(R, T);
-	const network = params.network ?? btc.TEST_NETWORK;
+	const network = params.network ?? ACTIVE_NETWORK.scure;
 
 	const leaves = btc.taprootListToTree([
 		{ script: claimLeaf, leafVersion: 0xc0 },

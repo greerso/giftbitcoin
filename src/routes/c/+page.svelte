@@ -3,7 +3,12 @@
 	import { goto, beforeNavigate } from '$app/navigation';
 	import { setNav, clearNav } from '$lib/nav.svelte';
 	import * as btc from '@scure/btc-signer';
-	import { parseShareCardFragment } from '$lib/gift-package';
+	import {
+		parseShareCardFragment,
+		isGiftFragment,
+		verifyShareCard,
+		CORRUPT_LINK_MSG
+	} from '$lib/gift-package';
 	import {
 		claimPrivFromSecret,
 		claimPrivFromPassphrase,
@@ -11,18 +16,19 @@
 		hexToBytesStrict,
 		b64urlToBytes
 	} from '$lib/crypto/keys';
-	import { verifyGiftPackage } from '$lib/crypto/create-gift';
 	import { buildClaimTx, type ClaimTxResult } from '$lib/claim-tx';
 	import { getUtxos, confirmedValue, hasMempool, recommendedFeeRate, broadcastTx } from '$lib/esplora';
 	import { fetchBtcUsd, satsToBtc, FALLBACK_BTC_USD } from '$lib/pricing';
 	import { money, fmtBtc, truncMiddle } from '$lib/format';
-	import { DEFAULT_EXPLORER_TX } from '$config/network';
+	import { ACTIVE_NETWORK, DEFAULT_EXPLORER_TX } from '$config/network';
 	import GiftCard from '$lib/components/GiftCard.svelte';
 
 	type Screen = 'loading' | 'nolink' | 'r0' | 'r1' | 'r2' | 'r3' | 'r4' | 'help';
 	let screen = $state<Screen>('loading');
 
 	interface Loaded {
+		/** the parsed share_card as it arrived — the wire form integrity checks run on */
+		sc: Record<string, unknown>;
 		address: string;
 		amountSats: number;
 		C_xonly: string;
@@ -107,6 +113,7 @@
 			const claim = sc.claim ?? {};
 			if (!script.address || !claim.secret_b64url) throw new Error('missing fields');
 			g = {
+				sc,
 				address: script.address,
 				amountSats: Number(sc.amount_expected_sats) || 0,
 				C_xonly: script.C_xonly,
@@ -126,20 +133,26 @@
 		}
 	}
 
+	// One classifier for both entry points (URL fragment + pasted link), so the
+	// same broken link never gets two different explanations.
+	function openFragment(frag: string, notGiftMsg = '') {
+		if (loadFromFragment(frag)) {
+			screen = 'r0';
+			checkChain();
+			return;
+		}
+		screen = 'nolink';
+		loadError = isGiftFragment(frag)
+			? CORRUPT_LINK_MSG
+			: frag.startsWith('v1.')
+				? 'This is a short link. Open the full gift link (or paste the sender’s backup file link) to redeem.'
+				: notGiftMsg;
+	}
+
 	onMount(async () => {
 		isDesktop = window.matchMedia?.('(min-width:720px)').matches ?? false;
 		const hash = window.location.hash ?? '';
-		const frag = hash.startsWith('#') ? hash.slice(1) : hash;
-		if (frag.startsWith('g1.') && loadFromFragment(frag)) {
-			screen = 'r0';
-			checkChain();
-		} else {
-			screen = 'nolink';
-			if (frag.startsWith('v1.')) {
-				loadError =
-					'This is a short link. Open the full gift link (or paste the sender’s backup file link) to redeem.';
-			}
-		}
+		openFragment(hash.startsWith('#') ? hash.slice(1) : hash);
 		price = await fetchBtcUsd();
 	});
 
@@ -199,13 +212,10 @@
 		loadError = '';
 		const raw = pasteLink.trim();
 		const hashIdx = raw.indexOf('#');
-		const frag = hashIdx >= 0 ? raw.slice(hashIdx + 1) : raw;
-		if (loadFromFragment(frag)) {
-			screen = 'r0';
-			checkChain();
-		} else {
-			loadError = 'That link doesn’t contain a gift. Paste the full link the sender gave you.';
-		}
+		openFragment(
+			hashIdx >= 0 ? raw.slice(hashIdx + 1) : raw,
+			'That link doesn’t contain a gift. Paste the full link the sender gave you.'
+		);
 	}
 
 	function pick(d: typeof dest) {
@@ -217,7 +227,7 @@
 
 	function validTestnetAddress(a: string): boolean {
 		try {
-			btc.Address(btc.TEST_NETWORK).decode(a.trim());
+			btc.Address(ACTIVE_NETWORK.scure).decode(a.trim());
 			return true;
 		} catch {
 			return false;
@@ -263,21 +273,8 @@
 			const priv = await deriveClaimPriv();
 			if (gen !== claimGen) return;
 			const C = xOnlyFromPriv(priv);
-			// Integrity: the derived C (and rebuilt address) must match the package.
-			const check = await verifyGiftPackage({
-				secret: g.secret,
-				passphrase,
-				passphraseRequired: g.passphraseRequired,
-				script: {
-					C_xonly: g.C_xonly,
-					R_xonly: g.R_xonly,
-					T: g.T,
-					nums_xonly: g.nums_xonly,
-					address: g.address,
-					script_pub_key: g.script_pub_key
-				},
-				network: btc.TEST_NETWORK
-			});
+			// Integrity: the link as received must re-derive to the funded script (SPEC §5.3).
+			const check = await verifyShareCard(g.sc, passphrase);
 			if (gen !== claimGen) return;
 			if (!check.ok) {
 				prepError = g.passphraseRequired
@@ -303,7 +300,7 @@
 				utxos,
 				destAddress: address.trim(),
 				feeRate,
-				network: btc.TEST_NETWORK
+				network: ACTIVE_NETWORK.scure
 			});
 			claimPriv = priv;
 		} catch (e) {
@@ -348,7 +345,7 @@
 				utxos,
 				destAddress: address.trim(),
 				feeRate,
-				network: btc.TEST_NETWORK
+				network: ACTIVE_NETWORK.scure
 			});
 			prep = next;
 			// SPEC §7.2.1.9: never broadcast amounts the user didn't approve. If the

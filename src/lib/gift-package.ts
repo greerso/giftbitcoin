@@ -3,7 +3,12 @@
  * variants (share_card / sender_full_backup / sender_watch_only) and the g1.
  * claim link from a CreatedGift.
  */
-import type { CreatedGift } from '$lib/crypto/create-gift';
+import {
+	verifyGiftPackage,
+	type CreatedGift,
+	type GiftScriptFields,
+	type VerifyResult
+} from '$lib/crypto/create-gift';
 import { bytesToB64url, b64urlToBytes } from '$lib/crypto/keys';
 import { ACTIVE_NETWORK } from '$config/network';
 
@@ -101,4 +106,38 @@ export function parseShareCardFragment(fragment: string): Record<string, unknown
 	if (!frag.startsWith('g1.')) throw new Error('not a full gift link');
 	const bytes = b64urlToBytes(frag.slice('g1.'.length));
 	return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+/** True if the fragment (with or without a leading '#') claims to be a g1. payload. */
+export function isGiftFragment(fragment: string): boolean {
+	const frag = fragment.startsWith('#') ? fragment.slice(1) : fragment;
+	return frag.startsWith('g1.');
+}
+
+/** Shared copy for a recognized-but-unparsable g1. fragment (claim + recover pages). */
+export const CORRUPT_LINK_MSG =
+	'That looks like a gift link, but it’s damaged or incomplete — make sure the whole link was copied (everything after the #), then try again.';
+
+/**
+ * SPEC §5.3 integrity check on the WIRE form — the parsed share_card a
+ * recipient's page works from. The create flow runs it on the freshly built
+ * package (round-tripped through the claim link) so a serialization regression
+ * is caught before the address can be funded, not by the recipient.
+ */
+export async function verifyShareCard(
+	sc: Record<string, unknown>,
+	passphrase?: string
+): Promise<VerifyResult> {
+	try {
+		const claim = (sc.claim ?? {}) as { secret_b64url?: string; passphrase_required?: boolean };
+		if (!claim.secret_b64url) return { ok: false, errors: ['missing claim secret'] };
+		return await verifyGiftPackage({
+			secret: b64urlToBytes(claim.secret_b64url, 32),
+			passphrase,
+			passphraseRequired: Boolean(claim.passphrase_required),
+			script: (sc.script ?? {}) as GiftScriptFields
+		});
+	} catch (e) {
+		return { ok: false, errors: [e instanceof Error ? e.message : String(e)] };
+	}
 }

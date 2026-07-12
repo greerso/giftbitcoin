@@ -1,25 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import * as btc from '@scure/btc-signer';
-import { createGift } from '../../src/lib/crypto/create-gift';
-import { claimPrivFromSecret, xOnlyFromPriv } from '../../src/lib/crypto/keys';
 import { buildClaimTx } from '../../src/lib/claim-tx';
-import type { Utxo } from '../../src/lib/esplora';
-
-const NET = btc.TEST_NETWORK;
-
-async function fixture() {
-	const g = await createGift({ policy: 'refund_self', network: NET });
-	const claimPriv = claimPrivFromSecret(g.claimSecret);
-	const dest = btc.p2tr(xOnlyFromPriv(claimPriv), undefined, NET).address as string;
-	return { g, claimPriv, dest };
-}
-
-const utxo = (value: number, confirmed = true): Utxo => ({
-	txid: '11'.repeat(32),
-	vout: 0,
-	value,
-	status: { confirmed }
-});
+import { NET, fixture, utxo } from './helpers';
 
 describe('buildClaimTx', () => {
 	it('builds, signs and finalizes a claim-path sweep', async () => {
@@ -71,6 +52,28 @@ describe('buildClaimTx', () => {
 				network: NET
 			})
 		).toThrow();
+	});
+
+	it('applies the 546-sat dust floor for a legacy destination', async () => {
+		const { g, claimPriv, dest } = await fixture();
+		const build = (value: number, destAddress: string) =>
+			buildClaimTx({
+				claimPriv,
+				C: g.C,
+				R: g.R,
+				T: g.T,
+				utxos: [utxo(value)],
+				destAddress,
+				feeRate: 1,
+				network: NET
+			});
+		const legacyDest = 'mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn'; // testnet P2PKH
+		// net ≈ 500 sats: above the 330 taproot floor, below the 546 legacy floor
+		expect(() => build(636, legacyDest)).toThrow(/too small/);
+		expect(build(636, dest).netSats).toBeGreaterThan(330);
+		// and a legacy destination CAN build once its own floor is cleared —
+		// pins that the pkh floor is 546-ish, not something absurdly higher
+		expect(build(700, legacyDest).netSats).toBeGreaterThan(546);
 	});
 
 	it('rejects a mainnet destination address', async () => {

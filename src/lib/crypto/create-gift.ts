@@ -82,12 +82,8 @@ export async function createGift(input: CreateGiftInput): Promise<CreatedGift> {
 		R = input.customR;
 	}
 
-	const payment = buildGiftPayment({
-		C,
-		R,
-		T,
-		network: input.network ?? btc.TEST_NETWORK
-	});
+	// network defaulting happens once, in buildGiftPayment (the lowest layer)
+	const payment = buildGiftPayment({ C, R, T, network: input.network });
 
 	return {
 		claimSecret,
@@ -149,12 +145,7 @@ export async function verifyGiftPackage(input: {
 			errors.push('claim pubkey C does not derive from this secret/passphrase');
 		}
 		const R = hexToBytesStrict(input.script.R_xonly, 32);
-		const payment = buildGiftPayment({
-			C,
-			R,
-			T: input.script.T,
-			network: input.network ?? btc.TEST_NETWORK
-		});
+		const payment = buildGiftPayment({ C, R, T: input.script.T, network: input.network });
 		if (payment.address !== input.script.address) {
 			errors.push('address does not match the derived script');
 		}

@@ -2,7 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { setNav, clearNav } from '$lib/nav.svelte';
-	import { parseShareCardFragment } from '$lib/gift-package';
+	import { parseShareCardFragment, isGiftFragment, CORRUPT_LINK_MSG } from '$lib/gift-package';
 	import { getUtxos, confirmedValue, hasMempool } from '$lib/esplora';
 	import { fmtBtc } from '$lib/format';
 	import { satsToBtc } from '$lib/pricing';
@@ -43,7 +43,11 @@
 		result = null;
 		const address = extractAddress(input);
 		if (!address) {
-			error = 'Paste the full gift link, or open your backup file and paste its contents.';
+			// same corrupt-vs-not-a-link distinction the claim page makes
+			const hashIdx = input.indexOf('#');
+			error = isGiftFragment(hashIdx >= 0 ? input.slice(hashIdx + 1) : input.trim())
+				? CORRUPT_LINK_MSG
+				: 'Paste the full gift link, or open your backup file and paste its contents.';
 			return;
 		}
 		checking = true;

@@ -1,48 +1,22 @@
 /** Network and product config — SPEC §14.0 / §10.5 */
+import * as btc from '@scure/btc-signer';
 
 /** Public brand domain (production) */
 export const BRAND_DOMAIN = 'giftbitcoin.app';
 
-export type NetworkId = 'testnet4' | 'regtest';
-
-export interface NetworkConfig {
-	id: NetworkId;
-	/** Package `network` field */
-	packageNetwork: string;
-	bech32: string;
-	bech32m: string;
-	pubKeyHash: number;
-	scriptHash: number;
-	wif: number;
-	/** Human label for banner */
-	label: string;
-}
-
-/** Bitcoin testnet4 params (same address HRP family as testnet3 for bech32: tb) */
-export const TESTNET4: NetworkConfig = {
-	id: 'testnet4',
+/**
+ * The SPEC §14.0 network pin: address building/validation defaults and the
+ * package `network` field all read this. Crypto/address defaults are
+ * single-sourced here; UX copy and the claim page's mainnet-address heuristic
+ * (`/^(bc1|[13])/`) still assume testnet and need their own pass when this
+ * ever changes. testnet4 shares testnet3's params for scure (`tb` HRP).
+ */
+export const ACTIVE_NETWORK = {
+	/** Package `network` field (SPEC §5.2) */
 	packageNetwork: 'testnet4',
-	bech32: 'tb',
-	bech32m: 'tb',
-	pubKeyHash: 0x6f,
-	scriptHash: 0xc4,
-	wif: 0xef,
-	label: 'Bitcoin testnet4'
-};
-
-export const REGTEST: NetworkConfig = {
-	id: 'regtest',
-	packageNetwork: 'regtest',
-	bech32: 'bcrt',
-	bech32m: 'bcrt',
-	pubKeyHash: 0x6f,
-	scriptHash: 0xc4,
-	wif: 0xef,
-	label: 'Bitcoin regtest'
-};
-
-/** Active product network for v1 builds */
-export const ACTIVE_NETWORK: NetworkConfig = TESTNET4;
+	/** scure-btc-signer network params */
+	scure: btc.TEST_NETWORK
+} as const;
 
 /**
  * Min gift amount (sats) — create UX floor. SPEC §8 defaults to 100_000 but calls

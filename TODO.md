@@ -175,7 +175,7 @@ Not blocking v1. Each needs an ADR if it changes packages or scripts.
 
 ## Open PRs / issues
 
-- [ ] **#5** — Critical-assessment fixes (key-loss guard, poll race, redeem re-confirmation, recover copy, `g1.` claim-link spec) — in flight on `fix/critical-assessment-findings`
+- [x] **#5** — Critical-assessment fixes (key-loss guard, poll race, redeem re-confirmation, recover copy, `g1.` claim-link spec) — merged via **#6** (`0b971e5`, 2026-07-12)
 
 ### Remaining review findings (not in #5)
 

@@ -5,12 +5,9 @@
 	import InstallPrompt from '$lib/components/InstallPrompt.svelte';
 	let { children } = $props();
 
-	const site = 'https://giftbitcoin.app';
 	const title = 'Gift Bitcoin (testnet) · giftbitcoin.app';
 	const description =
 		'Non-custodial Bitcoin e-gift cards. Create a gift, share a link, redeem to a wallet you control.';
-	// Absolute icon only — never claim-link fragments in unfurls (TODO B3).
-	const ogImage = `${site}/icons/icon-512.png`;
 </script>
 
 <svelte:head>
@@ -19,19 +16,7 @@
 	<meta name="referrer" content="no-referrer" />
 	<meta name="theme-color" content="#C97210" />
 	<meta name="description" content={description} />
-	<meta property="og:type" content="website" />
-	<meta property="og:site_name" content="Gift Bitcoin" />
-	<meta property="og:title" content="Gift Bitcoin — e-gift cards that are real bitcoin" />
-	<meta property="og:description" content={description} />
-	<meta property="og:url" content={site} />
-	<meta property="og:image" content={ogImage} />
-	<meta property="og:image:width" content="512" />
-	<meta property="og:image:height" content="512" />
-	<meta property="og:image:alt" content="Gift Bitcoin app icon" />
-	<meta name="twitter:card" content="summary" />
-	<meta name="twitter:title" content="Gift Bitcoin — e-gift cards that are real bitcoin" />
-	<meta name="twitter:description" content={description} />
-	<meta name="twitter:image" content={ogImage} />
+	<!-- OG/Twitter live in app.html (static for crawlers). -->
 </svelte:head>
 
 <div class="app">

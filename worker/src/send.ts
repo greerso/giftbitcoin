@@ -46,6 +46,9 @@ export function validateSend(body: unknown, env: SendEnv): ValidSend | SendError
 	} catch {
 		return bad('bad_link');
 	}
+	// JSON.parse('null')/('42')/('"x"') all succeed without throwing — a bare
+	// object-shape check is required before any property is dereferenced.
+	if (typeof card !== 'object' || card === null) return bad('bad_link');
 	if (card.network !== 'testnet4') return bad('bad_network');
 	const claim = (card.claim ?? {}) as Record<string, unknown>;
 	// UX guard on the honest path, not an abuse control — a forged card can set it.

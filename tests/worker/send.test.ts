@@ -75,6 +75,17 @@ describe('validateSend', () => {
 		if (!('error' in ok)) expect(ok.address).toBe(g.payment.address);
 	}, 30_000);
 
+	it('rejects a g1. payload that decodes to non-object JSON instead of throwing', () => {
+		// base64url('null') === 'bnVsbA' — JSON.parse('null') succeeds (doesn't
+		// throw), so this must be caught by an explicit object/null check, not
+		// by the parse try/catch.
+		const r = validateSend(
+			{ to: 'a@b.co', link: 'https://giftbitcoin.app/c#g1.bnVsbA', turnstile_token: 't' },
+			env
+		);
+		expect(r).toEqual({ error: 'bad_link', status: 400 });
+	});
+
 	it('rejects non-testnet4 cards', async () => {
 		const { sc } = await passGift();
 		const alt = structuredClone(sc) as any;

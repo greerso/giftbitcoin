@@ -175,4 +175,9 @@ Not blocking v1. Each needs an ADR if it changes packages or scripts.
 
 ## Open PRs / issues
 
-_(none yet)_
+- [ ] **#5** — Critical-assessment fixes (key-loss guard, poll race, redeem re-confirmation, recover copy, `g1.` claim-link spec) — in flight on `fix/critical-assessment-findings`
+
+### Remaining review findings (not in #5)
+
+- [ ] `[user decision → deferred]` SPEC amendment: move §5.5 offline-claim kit, §14.1 refund signing + donate/custom policies, §10.4 indexer override to an explicit post-v1 milestone (items already tracked above)
+- [ ] Improvements from 2026-07-12 full-codebase review: dust floor by output type (546 for legacy), scure leaf-order finalize dependency (comment/`allowUnknownInputs`), corrupt `g1.` link error message, tip formula vs SPEC §8.1, `ACTIVE_NETWORK` decorative plumbing, `verifyGiftPackage` unused in create flow, secrets-never-sent test, mempool.space-only fee endpoint

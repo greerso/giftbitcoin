@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { goto } from '$app/navigation';
+	import { goto, beforeNavigate } from '$app/navigation';
 	import { setNav, clearNav } from '$lib/nav.svelte';
 	import * as btc from '@scure/btc-signer';
 	import { parseShareCardFragment } from '$lib/gift-package';
@@ -51,8 +51,14 @@
 	let preparing = $state(false);
 	let prepError = $state('');
 	let prep = $state<ClaimTxResult | null>(null);
+	let amountsChanged = $state(false);
 	let sending = $state(false);
 	let sentTxid = $state('');
+	// Derived once per successful prepare; redeem reuses it. Deterministic from
+	// secret (+ passphrase), and any passphrase edit must pass back through
+	// prepareClaim to make `prep` non-null again — so it cannot go stale. Avoids
+	// re-running the 64 MiB Argon2id KDF on every redeem click.
+	let claimPriv: Uint8Array | null = null;
 
 	const btcStr = $derived(g ? fmtBtc(satsToBtc(g.amountSats)) : '0');
 	const usdDisplay = $derived(g ? money(satsToBtc(g.amountSats) * price) : '$0');
@@ -137,7 +143,18 @@
 		price = await fetchBtcUsd();
 	});
 
+	// Generation counter for the claim flow: back-navigation, a new prepare, a new
+	// redeem, or unmount bumps it, and in-flight async work re-checks it after every
+	// await so a stale continuation can never write state or broadcast.
+	let claimGen = 0;
+
 	$effect(() => {
+		if (sending) {
+			// No back arrow while a broadcast is in flight — the user must land on
+			// the txid screen, not navigate away from a transaction that went out.
+			setNav(null);
+			return;
+		}
 		const back: Record<Screen, (() => void) | null> = {
 			loading: null,
 			nolink: () => goto('/'),
@@ -148,10 +165,23 @@
 			r4: null,
 			help: () => (screen = 'r1')
 		};
-		setNav(back[screen] ?? (() => goto('/')));
+		const target = back[screen] ?? (() => goto('/'));
+		setNav(() => {
+			claimGen += 1;
+			target();
+		});
 	});
 
-	onDestroy(clearNav);
+	// Block client-side navigation (header logo) during the brief broadcast window
+	// so the tx can't go out with no one left to show the txid to.
+	beforeNavigate((navigation) => {
+		if (sending) navigation.cancel();
+	});
+
+	onDestroy(() => {
+		claimGen += 1;
+		clearNav();
+	});
 
 	async function checkChain() {
 		if (!g) return;
@@ -223,12 +253,16 @@
 
 	async function prepareClaim() {
 		if (!g) return;
+		const gen = ++claimGen;
 		preparing = true;
 		prepError = '';
 		prep = null;
+		claimPriv = null;
+		amountsChanged = false;
 		try {
-			const claimPriv = await deriveClaimPriv();
-			const C = xOnlyFromPriv(claimPriv);
+			const priv = await deriveClaimPriv();
+			if (gen !== claimGen) return;
+			const C = xOnlyFromPriv(priv);
 			// Integrity: the derived C (and rebuilt address) must match the package.
 			const check = await verifyGiftPackage({
 				secret: g.secret,
@@ -244,6 +278,7 @@
 				},
 				network: btc.TEST_NETWORK
 			});
+			if (gen !== claimGen) return;
 			if (!check.ok) {
 				prepError = g.passphraseRequired
 					? 'That passphrase doesn’t match this gift. Check it and try again.'
@@ -251,6 +286,7 @@
 				return;
 			}
 			const utxos = await getUtxos(g.address);
+			if (gen !== claimGen) return;
 			if (confirmedValue(utxos) <= 0) {
 				prepError = hasMempool(utxos)
 					? 'This gift is funded but still waiting to confirm on the chain. Try again in a few minutes.'
@@ -258,8 +294,9 @@
 				return;
 			}
 			const feeRate = await recommendedFeeRate();
+			if (gen !== claimGen) return;
 			prep = buildClaimTx({
-				claimPriv,
+				claimPriv: priv,
 				C,
 				R: hexToBytesStrict(g.R_xonly, 32),
 				T: g.T,
@@ -268,30 +305,43 @@
 				feeRate,
 				network: btc.TEST_NETWORK
 			});
+			claimPriv = priv;
 		} catch (e) {
+			if (gen !== claimGen) return;
 			prepError = e instanceof Error ? e.message : String(e);
 		} finally {
-			preparing = false;
+			// A superseded run must not clobber the live run's flag.
+			if (gen === claimGen) preparing = false;
 		}
 	}
 
 	async function redeem() {
-		if (!prep || !g || sending) return;
+		if (!prep || !g || !claimPriv || sending) return;
+		const gen = ++claimGen;
+		// What the user approved on the review screen — a concurrent prepareClaim
+		// resetting `prep` must not change the comparison basis (or crash it).
+		const reviewed = prep;
+		const priv = claimPriv;
 		sending = true;
 		prepError = '';
+		amountsChanged = false;
 		try {
-			// SPEC §6.3.6: re-fetch UTXOs and rebuild immediately before broadcast so a
-			// reorg / since-confirmed / since-spent change is reflected, not the stale tx.
-			const claimPriv = await deriveClaimPriv();
-			const C = xOnlyFromPriv(claimPriv);
+			// SPEC §6.4 reorg rule (and the §6.3.6 claim/expiry race): re-fetch UTXOs
+			// and rebuild immediately before broadcast so a reorg / since-confirmed /
+			// since-spent change is reflected, not the stale tx.
+			const C = xOnlyFromPriv(priv);
 			const utxos = await getUtxos(g.address);
+			if (gen !== claimGen) return;
 			if (confirmedValue(utxos) <= 0) {
 				prepError = 'This gift is no longer funded — it may have just been redeemed.';
 				return;
 			}
 			const feeRate = await recommendedFeeRate();
-			prep = buildClaimTx({
-				claimPriv,
+			// Last await before the irreversible step — from here to broadcastTx is
+			// synchronous, so no user event can retarget the address or cancel.
+			if (gen !== claimGen) return;
+			const next = buildClaimTx({
+				claimPriv: priv,
 				C,
 				R: hexToBytesStrict(g.R_xonly, 32),
 				T: g.T,
@@ -300,11 +350,24 @@
 				feeRate,
 				network: btc.TEST_NETWORK
 			});
-			sentTxid = await broadcastTx(prep.hex);
+			prep = next;
+			// SPEC §7.2.1.9: never broadcast amounts the user didn't approve. If the
+			// sweep grew (new UTXO confirmed) or the net shrank (fee rose), show the
+			// updated review instead. A net increase at the same gross only favors
+			// the recipient, so it goes through.
+			if (next.grossSats !== reviewed.grossSats || next.netSats < reviewed.netSats) {
+				amountsChanged = true;
+				return;
+			}
+			sentTxid = await broadcastTx(next.hex);
+			// The tx is out — always land on the txid screen (nav is locked while
+			// sending, so nothing else can have taken over the page).
 			screen = 'r4';
 		} catch (e) {
+			if (gen !== claimGen) return;
 			prepError = 'Broadcast failed: ' + (e instanceof Error ? e.message : String(e));
 		} finally {
+			// Always release: `sending` gates redeem re-entry and the nav lock.
 			sending = false;
 		}
 	}
@@ -435,6 +498,12 @@
 				<span class="rk">To</span><span class="rv mono small">{truncMiddle(address.trim())}</span>
 			</div>
 		</div>
+		{#if amountsChanged}
+			<div class="warn-box mb">
+				The gift balance or network fee changed while you were reviewing. Check the updated
+				amounts above, then redeem.
+			</div>
+		{/if}
 		{#if g.amountSats && prep.grossSats < g.amountSats}
 			<div class="warn-box mb">
 				This gift holds less than the sender intended ({usdDisplay}). You’ll still receive the full

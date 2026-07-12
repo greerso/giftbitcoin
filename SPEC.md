@@ -310,20 +310,22 @@ https://<host>/c#<payload>
 
 | Form | Meaning |
 |------|---------|
-| `v1.<secret_b64url>` | No passphrase; secret is IKM for HKDF claim path |
-| `v1.p.<secret_b64url>` | Passphrase required; secret is Argon2 **salt** |
+| `g1.<share_card_b64url>` | Full gift link: base64url (unpadded) of the `share_card` JSON (§5.3). Self-sufficient — card display fields, `script` public fields, and claim secret. **The v1 product emits and accepts only this form.** |
+| `v1.<secret_b64url>` | **Reserved.** No passphrase; secret is IKM for HKDF claim path |
+| `v1.p.<secret_b64url>` | **Reserved.** Passphrase required; secret is Argon2 **salt** |
 
+- `v1.` / `v1.p.` short forms are **reserved, not live**: the v1 product never emits them, and the claim page rejects them with guidance to open the full `g1.` link. They carry no `script` fields, so a site-independent claim is impossible from them alone; they become claimable only in a build that implements chain discovery (below).
 - Secret material **only** in the URL **fragment**, never query string  
 - Do not put fragment into `history`, analytics, or API query params  
-- Claim page may need `script` parameters (address, `T`, `C`, `R`, nums) from: (1) optional compact payload extension, or (2) watch-only package / QR scanned at claim, or (3) chain discovery by deriving address client-side from secret alone  
+- Claim page may need `script` parameters (address, `T`, `C`, `R`, nums) from: (1) the `g1.` payload, or (2) watch-only package / QR scanned at claim, or (3) chain discovery by deriving address client-side from secret alone  
 
 **Address recovery from URL alone:** With only `claim_secret` (± passphrase), client can recompute `C` but **not** `R` or `T`. Therefore:
 
 - **Share card JSON/QR** (or extended fragment) **must** include `script` public fields (`nums_xonly`, `T`, `C_xonly`, `R_xonly`, `address`) for offline/site-down claim.  
-- Minimal fragment carries **only** secret + passphrase flag for short links when the site can serve a companion watch template — **but** offline-capable share **must** use full `share_card` package (§5.3).  
-- v1 product: primary share artifact is **full share_card** (file + QR of JSON or of claim URL **plus** download of share_card). Short link without package is convenience-only when site is up **and** package was embedded at create in localStorage is **not** relied on for recipient.
+- Minimal fragment carries **only** secret + passphrase flag — reserved for a future build with a companion watch template or chain discovery; offline-capable share **must** use full `share_card` package (§5.3).  
+- v1 product: the share artifact is the **full `g1.` link / share_card** (file + QR of JSON or of claim URL **plus** download of share_card). Short links are not emitted or accepted in v1.
 
-**Recommended v1 share UX:** one QR = `share_card` JSON (or compressed); human also gets claim URL for when they have the package already.
+**Recommended v1 share UX:** one QR = `share_card` JSON (or of the `g1.` claim URL, which is self-sufficient); human also gets the `g1.` link as text.
 
 **HTTP headers (claim app):**
 

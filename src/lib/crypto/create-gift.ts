@@ -33,11 +33,9 @@ export interface CreateGiftInput {
 
 export interface CreatedGift {
 	claimSecret: Uint8Array;
-	claimSecretHex: string;
 	/** base64url (unpadded) — the SPEC §5.3/§5.4 on-wire form for packages/links */
 	claimSecretB64url: string;
 	refundSecret?: Uint8Array;
-	refundSecretHex?: string;
 	refundSecretB64url?: string;
 	passphraseRequired: boolean;
 	kdf: ClaimKdf;
@@ -93,10 +91,8 @@ export async function createGift(input: CreateGiftInput): Promise<CreatedGift> {
 
 	return {
 		claimSecret,
-		claimSecretHex: bytesToHex(claimSecret),
 		claimSecretB64url: bytesToB64url(claimSecret),
 		refundSecret,
-		refundSecretHex: refundSecret ? bytesToHex(refundSecret) : undefined,
 		refundSecretB64url: refundSecret ? bytesToB64url(refundSecret) : undefined,
 		passphraseRequired,
 		kdf,

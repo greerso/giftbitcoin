@@ -2,8 +2,6 @@
 
 /** Public brand domain (production) */
 export const BRAND_DOMAIN = 'giftbitcoin.app';
-export const BRAND_NAME = 'Gift Bitcoin';
-export const PRODUCTION_ORIGIN = `https://${BRAND_DOMAIN}`;
 
 export type NetworkId = 'testnet4' | 'regtest';
 
@@ -52,9 +50,6 @@ export const ACTIVE_NETWORK: NetworkConfig = TESTNET4;
  * Still well above the taproot dust threshold (~330 sats).
  */
 export const MIN_GIFT_SATS = 10_000;
-
-/** Default tip as fraction of gift */
-export const DEFAULT_TIP_FRACTION = 0.03;
 
 /** Expiry T presets in blocks (~30/90/180 days at 144 blk/day) */
 export const T_PRESETS = {

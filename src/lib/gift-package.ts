@@ -4,7 +4,6 @@
  * link forms from a CreatedGift.
  */
 import type { CreatedGift } from '$lib/crypto/create-gift';
-import { encodeSecretPayload } from '$lib/crypto/payload';
 import { bytesToB64url, b64urlToBytes } from '$lib/crypto/keys';
 import { ACTIVE_NETWORK } from '$config/network';
 
@@ -85,11 +84,6 @@ export function buildPackages(gift: CreatedGift, meta: GiftMeta): GiftPackages {
 	const sender_watch_only = { ...base, claim: claimMeta };
 
 	return { share_card, sender_full_backup, sender_watch_only };
-}
-
-/** Normative short claim payload (SPEC §5.4): `v1.`/`v1.p.` + secret_b64url. */
-export function claimUrl(gift: CreatedGift, origin: string): string {
-	return `${origin}/c#${encodeSecretPayload(gift.claimSecret, gift.passphraseRequired)}`;
 }
 
 /**

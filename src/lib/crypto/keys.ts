@@ -3,6 +3,7 @@
  */
 import { hkdf } from '@noble/hashes/hkdf';
 import { sha256 } from '@noble/hashes/sha2';
+import { bytesToHex as nobleBytesToHex, hexToBytes as nobleHexToBytes } from '@noble/hashes/utils';
 import { schnorr } from '@noble/curves/secp256k1';
 import { base64urlnopad } from '@scure/base';
 import { argon2id } from 'hash-wasm';
@@ -56,7 +57,7 @@ export async function claimPrivFromPassphrase(
 		hashLength: 32,
 		outputType: 'hex'
 	});
-	const raw = hexToBytes(hashHex);
+	const raw = nobleHexToBytes(hashHex); // argon2 hex output is always even-length
 	return scalarize(raw);
 }
 
@@ -78,31 +79,15 @@ export function claimKdfPassphrase(): ClaimKdf {
 	return { name: 'argon2id', m: 65536, t: 3, p: 1, out: 32 };
 }
 
-function hexToBytes(hex: string): Uint8Array {
-	const clean = hex.length % 2 ? '0' + hex : hex;
-	const out = new Uint8Array(clean.length / 2);
-	for (let i = 0; i < out.length; i++) {
-		out[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
-	}
-	return out;
-}
-
 export function bytesToHex(b: Uint8Array): string {
-	return Array.from(b)
-		.map((x) => x.toString(16).padStart(2, '0'))
-		.join('');
+	return nobleBytesToHex(b);
 }
 
 export function hexToBytesStrict(hex: string, expectedBytes?: number): Uint8Array {
-	// parseInt('zz',16) is NaN which coerces to 0 in a Uint8Array — so an unchecked
-	// decoder turns a corrupted claim link into a *wrong* key that looks valid.
-	// Reject anything that is not clean, even-length hex (of the expected length).
-	if (!/^[0-9a-fA-F]*$/.test(hex)) throw new Error('invalid hex: non-hex characters');
-	if (hex.length % 2) throw new Error('odd hex length');
-	const out = new Uint8Array(hex.length / 2);
-	for (let i = 0; i < out.length; i++) {
-		out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-	}
+	// noble's hexToBytes already throws on non-hex chars and odd length (an unchecked
+	// decoder would turn a corrupted claim link into a wrong-but-valid-looking key).
+	// Add the byte-length guard for the 32-byte claim-secret trust boundary.
+	const out = nobleHexToBytes(hex);
 	if (expectedBytes !== undefined && out.length !== expectedBytes) {
 		throw new Error(`expected ${expectedBytes} bytes, got ${out.length}`);
 	}

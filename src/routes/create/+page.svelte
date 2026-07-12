@@ -16,6 +16,7 @@
 	import { T_PRESETS, MIN_GIFT_SATS } from '$config/network';
 	import { CARD_DESIGNS } from '$lib/giftcards';
 	import GiftCard from '$lib/components/GiftCard.svelte';
+	import { generatePassphrase } from '$lib/crypto/passphrase';
 
 	type Step = 'c1' | 'c3' | 'c4';
 	let step = $state<Step>('c1');
@@ -29,8 +30,24 @@
 	let advOpen = $state(false);
 	let tipPct = $state(3);
 	let expiryDays = $state<30 | 90 | 180>(90);
-	let usePass = $state(false);
-	let passphrase = $state('');
+	let delivery = $state<'self' | 'email'>('self');
+	let passOptIn = $state(false);
+	let words = $state('');
+	let wordsCopied = $state(false);
+	const passActive = $derived(delivery === 'email' || passOptIn);
+
+	function ensureWords() {
+		if (!words) words = generatePassphrase();
+	}
+	async function copyWords() {
+		try {
+			await navigator.clipboard.writeText(words);
+			wordsCopied = true;
+			setTimeout(() => (wordsCopied = false), 1800);
+		} catch {
+			wordsCopied = false; // words are visible to select manually
+		}
+	}
 
 	let busy = $state(false);
 	let error = $state('');
@@ -124,7 +141,8 @@
 		busy = true;
 		try {
 			cancelPoll(); // kill any poll from a prior address before (re)building
-			const pass = usePass && passphrase ? passphrase : undefined;
+			if (passActive) ensureWords();
+			const pass = passActive ? words : undefined;
 			const key = { expiry: expiryDays, usePass: !!pass, pass: pass ?? '' };
 			// Regenerate keys only if the security params changed — otherwise keep the
 			// existing (possibly-funded) address so a name tweak never orphans funds.
@@ -297,6 +315,62 @@
 	</div>
 	<textarea bind:value={message} placeholder="Add a short message (optional)" rows="2"></textarea>
 
+	<div class="label-caps">How will you deliver it?</div>
+	<div class="deliver">
+		<button class="opt" class:on={delivery === 'self'} onclick={() => (delivery = 'self')}>
+			<div class="opt-title">I'll share it myself</div>
+			<div class="opt-desc">Copy the link or QR code and send it any way you like.</div>
+		</button>
+		<button
+			class="opt"
+			class:on={delivery === 'email'}
+			onclick={() => {
+				delivery = 'email';
+				ensureWords();
+			}}
+		>
+			<div class="opt-title">Email it for them</div>
+			<div class="opt-desc">We email the link — you send the 4 secret words separately.</div>
+		</button>
+	</div>
+
+	{#if delivery === 'self'}
+		<label class="pass-toggle">
+			<input
+				type="checkbox"
+				bind:checked={passOptIn}
+				class="checkbox"
+				onchange={() => passOptIn && ensureWords()}
+			/>
+			<span class="pass-label">Add 4 secret words as a second lock (recommended if sharing over chat)</span>
+		</label>
+		{#if !passOptIn}
+			<p class="deliver-note">
+				Without the secret words, this gift can never be emailed for you later — that choice is locked
+				in when you fund it.
+			</p>
+		{/if}
+	{:else}
+		<p class="deliver-note">
+			Email delivery locks in the 4 secret words below — the email alone can't claim the gift. If the
+			email is lost, you can still share the link yourself, and you can reclaim the bitcoin after
+			expiry.
+		</p>
+	{/if}
+
+	{#if passActive && words}
+		<div class="warn-box words-box">
+			<div class="label-caps">The 4 secret words</div>
+			<div class="words mono">{words}</div>
+			<button class="btn-copy" onclick={copyWords}>{wordsCopied ? 'Copied ✓' : 'Copy words'}</button>
+			<p class="deliver-note">
+				Write these down — you'll give them to the recipient separately (text or tell them). They're
+				never stored in your backup: lose them and the gift can't be redeemed, though you can reclaim
+				after expiry.
+			</p>
+		</div>
+	{/if}
+
 	<button class="adv-toggle" onclick={() => (advOpen = !advOpen)}>
 		Advanced options {advOpen ? '▴' : '▾'}
 	</button>
@@ -324,17 +398,6 @@
 						<button class="chip" class:on={expiryDays === d} onclick={() => (expiryDays = d as 30)}>{d} days</button>
 					{/each}
 				</div>
-			</div>
-
-			<div class="card">
-				<label class="pass-toggle">
-					<input type="checkbox" bind:checked={usePass} class="checkbox" />
-					<span class="adv-title">Require a passphrase to redeem</span>
-				</label>
-				{#if usePass}
-					<input class="mt" bind:value={passphrase} placeholder="e.g. happy birthday mel" />
-					<div class="adv-note mt-sm">Share it separately — like the PIN on a gift card.</div>
-				{/if}
 			</div>
 		</div>
 	{/if}
@@ -414,6 +477,18 @@
 		<strong>This link is money.</strong> Anyone who has it can redeem the bitcoin — share it privately,
 		like cash.
 	</div>
+
+	{#if passActive && words}
+		<div class="warn-box mtb words-box">
+			<div class="label-caps">The 4 secret words</div>
+			<div class="words mono">{words}</div>
+			<button class="btn-copy" onclick={copyWords}>{wordsCopied ? 'Copied ✓' : 'Copy words'}</button>
+			<p class="deliver-note">
+				Now text or tell them these 4 words — the {delivery === 'email' ? 'email' : 'link'} alone
+				can't claim the gift.
+			</p>
+		</div>
+	{/if}
 
 	<div class="share-actions">
 		<button class="btn btn-primary" onclick={copyLink}>
@@ -531,6 +606,52 @@
 	textarea {
 		margin-bottom: 22px;
 	}
+	.deliver {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		margin-bottom: 12px;
+	}
+	.opt {
+		text-align: left;
+		background: #fff;
+		border: 1px solid var(--border);
+		border-radius: 14px;
+		padding: 14px 16px;
+		cursor: pointer;
+	}
+	.opt.on {
+		border: 2px solid var(--amber);
+	}
+	.opt-title {
+		font-size: 15px;
+		font-weight: 600;
+		margin-bottom: 2px;
+	}
+	.opt-desc {
+		font-size: 13px;
+		color: var(--muted);
+	}
+	.pass-label {
+		font-size: 13.5px;
+		font-weight: 600;
+	}
+	.deliver-note {
+		font-size: 12.5px;
+		color: var(--muted);
+		line-height: 1.5;
+		margin: 8px 0 0;
+	}
+	.words-box {
+		margin: 12px 0 4px;
+	}
+	.words {
+		font-size: 17px;
+		font-weight: 700;
+		letter-spacing: 0.02em;
+		margin: 6px 0 10px;
+		user-select: all;
+	}
 	.adv-toggle {
 		display: inline-flex;
 		align-items: center;
@@ -580,12 +701,6 @@
 		height: 18px;
 		accent-color: var(--amber);
 		flex: none;
-	}
-	.mt {
-		margin-top: 12px;
-	}
-	.mt-sm {
-		margin-top: 8px;
 	}
 	.mt-btn {
 		margin-top: 6px;

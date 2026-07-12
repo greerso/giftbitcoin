@@ -3,9 +3,9 @@
  * Design: docs/superpowers/specs/2026-07-12-send-mechanism-design.md.
  * SPEC §5.1 carve-out: the share_card transits, is never persisted, never logged.
  */
-import * as btc from '@scure/btc-signer';
 import { buildGiftPayment } from '../../src/lib/crypto/gift-script';
 import { hexToBytesStrict, b64urlToBytes } from '../../src/lib/crypto/keys';
+import { ACTIVE_NETWORK } from '../../src/config/network';
 import type { SendEnv } from './types';
 
 const B64URL = /^[A-Za-z0-9_-]+$/;
@@ -64,7 +64,7 @@ export function validateSend(body: unknown, env: SendEnv): ValidSend | SendError
 			C: hexToBytesStrict(String(script.C_xonly), 32),
 			R: hexToBytesStrict(String(script.R_xonly), 32),
 			T: Number(script.T),
-			network: btc.TEST_NETWORK
+			network: ACTIVE_NETWORK.scure
 		});
 		if (payment.address !== script.address) return bad('address_mismatch');
 		if (payment.nums_xonly !== script.nums_xonly) return bad('address_mismatch');

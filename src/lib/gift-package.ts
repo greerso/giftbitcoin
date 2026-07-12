@@ -95,7 +95,8 @@ export function buildPackages(gift: CreatedGift, meta: GiftMeta): GiftPackages {
 /**
  * Self-sufficient claim link: the whole share_card, so the recipient's page can
  * show the card and locate the funds from the link alone (the SPEC §5.4 g1.
- * payload). Fragment-only — never sent to a server.
+ * payload). Fragment-only — never sent to a server, except via the SPEC §5.1
+ * email-relay carve-out (POST /api/send, passphrase-committed gifts only).
  */
 export function fullClaimLink(shareCard: Record<string, unknown>, origin: string): string {
 	const json = JSON.stringify(shareCard);

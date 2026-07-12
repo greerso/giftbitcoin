@@ -1,10 +1,10 @@
 # Gift Bitcoin — Product & Protocol Specification
 
 **Public brand / domain:** **[giftbitcoin.app](https://giftbitcoin.app)** ([docs/BRAND.md](./docs/BRAND.md))  
-**Status:** Draft v0.2.5 (brand locked: giftbitcoin.app)  
+**Status:** Draft v0.2.6 (brand locked: giftbitcoin.app)  
 **Network (v1):** Bitcoin **testnet4** (see §14.0)  
-**Last updated:** 2026-07-11  
-**Changelog:** v0.2–v0.2.4 — see git history. **v0.2.5** — public name **Gift Bitcoin**, domain **giftbitcoin.app**. Crypto protocol labels (`BTCGiftcard/v1/…`, `btcgiftcard/v1/…`) remain frozen for address compatibility.
+**Last updated:** 2026-07-12  
+**Changelog:** v0.2–v0.2.4 — see git history. **v0.2.5** — public name **Gift Bitcoin**, domain **giftbitcoin.app**. Crypto protocol labels (`BTCGiftcard/v1/…`, `btcgiftcard/v1/…`) remain frozen for address compatibility. **v0.2.6** — explicit **v1.1 milestone** (§14.4): offline-claim kit (§5.5 items 2–3), refund/expiry signing + `donate_project`/`custom` policy wiring (§14.1), indexer-override UI (§10.4) moved out of v1 core; success criteria §14.3.2/.5/.8 re-anchored to v1.1. No package or script changes.
 
 This document is the source of truth for design. Implementation must not contradict it without an explicit spec change.
 
@@ -333,17 +333,20 @@ https://<host>/c#<payload>
 - No third-party analytics on claim routes  
 - CSP strict (`default-src 'self'`; `connect-src` indexer allowlist only)
 
-### 5.5 Offline recovery checklist (v1 minimum)
+### 5.5 Offline recovery checklist
 
-v1 **must** ship all of:
+v1 **must** ship:
 
 1. **Downloadable `share_card` + `sender_full_backup` JSON** at create  
+
+Deferred to **v1.1** (§14.4):
+
 2. **Static offline claim page** (single HTML+JS bundle, no secrets baked in) distributed with the app release and/or generated at create  
 3. **Written steps** for descriptor + key import into a named wallet (Sparrow recommended) for script-path spend, with version note  
 
-**Success criterion §14.3.2** means: using (1)+(2) against a public testnet4 indexer, claim works with **network offline from the project origin** (block project domain).
+**Success criterion §14.3.2** means: using (1)+(2) against a public testnet4 indexer, claim works with **network offline from the project origin** (block project domain). It applies when (2) ships (v1.1).
 
-Refund offline: import `sender_full_backup`, wait CSV, spend expiry leaf.
+Refund offline: import `sender_full_backup`, wait CSV, spend expiry leaf — signing tooling lands in v1.1 (§14.4).
 
 ---
 
@@ -635,7 +638,7 @@ Must not strand funds with website process. Typical pattern: client spends claim
 
 ### 10.4 Privacy defaults
 
-- User can set custom Esplora/Electrum endpoint  
+- User can set custom Esplora/Electrum endpoint — v1: documented `localStorage` override (`gb_esplora_base`, custom hosts also need a CSP `connect-src` entry); settings **UI** is v1.1 (§14.4)  
 - Document Tor usage  
 - Do not force all broadcasts through project domain without alternative  
 
@@ -756,12 +759,12 @@ If testnet4 infrastructure is unavailable in an environment, development may use
 - Fund watch + confirmation gates  
 - `share_card` + `sender_full_backup` + `sender_watch_only`  
 - Claim on-chain with **destination chooser** + exchange/wallet guides + paste address (multi-UTXO aware)  
-- Expiry recovery for `refund_self`  
-- `donate_project` and `custom` policy wiring (project key from config)  
+- Expiry recovery for `refund_self`: **status check + recovery instructions** (signing/broadcast → v1.1, §14.4)  
 - Optional passphrase (Argon2id path)  
-- **Static offline claim HTML** + offline checklist  
 - Public testnet4 indexer integration (pluggable)  
 - LN module **interfaces** behind default-**off** feature flag (no success requirement)
+
+Moved to **v1.1** (§14.4): refund signing/broadcast, `donate_project` + `custom` policy wiring, static offline claim HTML kit, indexer-override UI.
 
 ### 14.2 Explicitly deferred
 
@@ -776,14 +779,29 @@ If testnet4 infrastructure is unavailable in an environment, development may use
 
 ### 14.3 Success criteria (v1)
 
+Numbering is frozen (code and tests cite §14.3.n). Criteria marked **(v1.1)** apply when their §14.4 deliverable ships.
+
 1. Create → fund (testnet4 or regtest) → claim on-chain works end-to-end with site.  
-2. Same gift claimable via **share_card + offline claim HTML** with project origin blocked.  
+2. **(v1.1)** Same gift claimable via **share_card + offline claim HTML** with project origin blocked.  
 3. Automated test: claim secret never appears in simulated server request URLs/bodies.  
 4. Unconfirmed-only gift cannot be marked claimable.  
-5. After `T` (short `T` on regtest), refund path recovers to sender when claim did not win the race.  
+5. **(v1.1)** After `T` (short `T` on regtest), refund path recovers to sender when claim did not win the race.  
 6. Network validation rejects mainnet addresses.  
 7. Golden vector: fixed `claim_secret` → fixed address with frozen NUMS/tree.  
-8. Post-`T`, both claim and refund still attempted in tests; first spend wins.
+8. **(v1.1)** Post-`T`, both claim and refund still attempted in tests; first spend wins.
+
+### 14.4 v1.1 milestone (committed, post-v1)
+
+Moved out of v1 core by the 2026-07-12 review — still normative deliverables (tracked in [TODO.md](./TODO.md)), just not v1 blockers:
+
+| Deliverable | Detail | Re-activates |
+|-------------|--------|--------------|
+| **Static offline claim HTML kit** | §5.5 items 2–3: single-file claim page + written wallet-import steps | §14.3.2 |
+| **Refund / expiry signing + broadcast** | `refund_self` spend of the CSV leaf (§7.3). The custom leaf needs a manually built witness — library auto-finalize does not cover it. v1 recover page stays status-check + instructions | §14.3.5, §14.3.8 |
+| **`donate_project` + `custom` policy wiring** | Project key from release config (§4.3); UI selection at create | — |
+| **Indexer-override UI** | Settings screen over the existing `localStorage` override + CSP `connect-src` handling (§10.4) | — |
+
+No package-format or script changes are implied by this milestone; anything that would alter packages or scripts still requires an ADR first (§22 rule).
 
 ---
 
@@ -809,7 +827,7 @@ If testnet4 infrastructure is unavailable in an environment, development may use
 | Property | Address from package == address at create; C matches secret |
 | Integration | Fund; claim; double-claim fails; multi-UTXO partial claim; refund after short T; claim wins race after T |
 | Security | Fragment not in outbound requests; CSP; no secret in localStorage unless user-initiated save |
-| E2E | Create → pay → claim; offline HTML claim; refund path |
+| E2E | Create → pay → claim; offline HTML claim (v1.1, §14.4); refund path (v1.1, §14.4) |
 
 Prefer **regtest** for CI; **testnet4** for manual QA.
 

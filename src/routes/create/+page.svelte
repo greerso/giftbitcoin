@@ -15,6 +15,7 @@
 	import { fmtBtc, money } from '$lib/format';
 	import { getUtxos, confirmedValue } from '$lib/esplora';
 	import { T_PRESETS, MIN_GIFT_SATS } from '$config/network';
+	import { TURNSTILE_SITE_KEY, SEND_API_PATH } from '$config/send';
 	import { CARD_DESIGNS } from '$lib/giftcards';
 	import GiftCard from '$lib/components/GiftCard.svelte';
 	import Qr from '$lib/components/Qr.svelte';
@@ -37,6 +38,13 @@
 	let words = $state('');
 	let wordsCopied = $state(false);
 	const passActive = $derived(delivery === 'email' || passOptIn);
+
+	let canWebShare = $state(false); // set in onMount: browser-only API
+	let toEmail = $state('');
+	let sendState = $state<'idle' | 'sending' | 'sent' | 'error'>('idle');
+	let sendError = $state('');
+	let turnstileToken = $state('');
+	let turnstileWidget: string | undefined;
 
 	function ensureWords() {
 		if (!words) words = generatePassphrase();
@@ -88,6 +96,7 @@
 
 	onMount(async () => {
 		price = await fetchBtcUsd();
+		canWebShare = navigator.canShare?.({ url: location.href }) ?? !!navigator.share;
 	});
 
 	$effect(() => {
@@ -236,6 +245,71 @@
 			setTimeout(() => (linkCopied = false), 1800);
 		} catch {
 			linkCopyFailed = true; // reveal the link text for manual copy
+		}
+	}
+
+	async function webShare() {
+		try {
+			await navigator.share({ url: shareLink });
+		} catch {
+			/* user cancel / unsupported — the copy button is right there (silent fallback) */
+		}
+	}
+
+	/** Svelte action: explicit Turnstile render (widget div mounts long after page load). */
+	function turnstile(el: HTMLElement) {
+		const render = () => {
+			turnstileWidget = (window as any).turnstile.render(el, {
+				sitekey: TURNSTILE_SITE_KEY,
+				action: 'send-email',
+				callback: (t: string) => (turnstileToken = t),
+				'expired-callback': () => (turnstileToken = '')
+			});
+		};
+		if ((window as any).turnstile) render();
+		else {
+			(window as any).__gbTurnstileOnload = render;
+			const s = document.createElement('script');
+			s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?onload=__gbTurnstileOnload&render=explicit';
+			s.async = true;
+			s.defer = true;
+			document.head.appendChild(s);
+		}
+	}
+
+	async function sendGiftEmail() {
+		sendError = '';
+		const to = toEmail.trim();
+		if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+			sendError = 'Enter the recipient’s email address.';
+			return;
+		}
+		if (!turnstileToken) {
+			sendError = 'Please complete the human check first.';
+			return;
+		}
+		sendState = 'sending';
+		try {
+			const res = await fetch(SEND_API_PATH, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					to,
+					link: shareLink, // ALWAYS the two-segment link — never qrLink
+					from_name: fromName.trim() || undefined,
+					message: message.trim() || undefined,
+					turnstile_token: turnstileToken
+				})
+			});
+			if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? `HTTP ${res.status}`);
+			sendState = 'sent';
+		} catch {
+			sendState = 'error';
+			sendError = "The email couldn't be sent right now — copy the link and send it yourself instead.";
+		} finally {
+			// Turnstile tokens are single-use: siteverify consumed it either way.
+			turnstileToken = '';
+			(window as any).turnstile?.reset?.(turnstileWidget);
 		}
 	}
 
@@ -502,10 +576,40 @@
 		</div>
 	{/if}
 
+	{#if delivery === 'email'}
+		<div class="card email-card">
+			{#if sendState === 'sent'}
+				<div class="success-check small">✓</div>
+				<p class="lede">
+					Handed to the mail system — confirm it arrived when you send them the 4 words.
+				</p>
+			{:else}
+				<div class="label-caps">Email it for them</div>
+				<input bind:value={toEmail} type="email" placeholder="recipient@example.com" />
+				<div use:turnstile class="turnstile-slot"></div>
+				{#if sendError}<p class="error">{sendError}</p>{/if}
+				<button class="btn btn-primary" disabled={sendState === 'sending'} onclick={sendGiftEmail}>
+					{sendState === 'sending' ? 'Sending…' : 'Send the gift email'}
+				</button>
+				<p class="deliver-note">
+					We email only the link. You send the 4 secret words yourself — text or tell them.
+				</p>
+			{/if}
+		</div>
+	{/if}
+
 	<div class="share-actions">
-		<button class="btn btn-primary" onclick={copyLink}>
+		{#if canWebShare}
+			<button class="btn btn-primary" onclick={webShare}>Share…</button>
+		{/if}
+		<button class={canWebShare ? 'btn btn-secondary' : 'btn btn-primary'} onclick={copyLink}>
 			{linkCopied ? 'Link copied ✓' : 'Copy gift link'}
 		</button>
+		<div class="msg-links">
+			<a href={`https://wa.me/?text=${encodeURIComponent(shareLink)}`} target="_blank" rel="noreferrer">WhatsApp</a>
+			<span>·</span>
+			<a href={`sms:?&body=${encodeURIComponent(shareLink)}`}>Messages</a>
+		</div>
 		<button class="btn btn-secondary" onclick={downloadBackup}>
 			{backedUp ? 'Backup downloaded ✓' : 'Download backup'}
 		</button>
@@ -882,5 +986,26 @@
 		background: none;
 		border: none;
 		padding: 0;
+	}
+	.email-card {
+		padding: 18px;
+		margin: 0 0 16px;
+	}
+	.email-card input {
+		margin: 10px 0;
+	}
+	.turnstile-slot {
+		min-height: 65px;
+		margin-bottom: 10px;
+	}
+	.msg-links {
+		display: flex;
+		gap: 8px;
+		justify-content: center;
+		font-size: 13.5px;
+		font-weight: 600;
+	}
+	.success-check.small {
+		font-size: 28px;
 	}
 </style>

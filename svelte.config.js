@@ -25,14 +25,16 @@ const config = {
 				// 'wasm-unsafe-eval' lets hash-wasm's Argon2id (the passphrase KDF) compile
 				// its WebAssembly module; it does NOT permit eval()/new Function() the way
 				// full 'unsafe-eval' would.
-				'script-src': ['self', 'wasm-unsafe-eval'],
+				'script-src': ['self', 'wasm-unsafe-eval', 'https://challenges.cloudflare.com'],
 				'style-src': ['self', 'unsafe-inline'],
 				'img-src': ['self', 'data:'],
 				'font-src': ['self'],
 				'connect-src': ['self', 'https://mempool.space'],
 				'object-src': ['none'],
 				'base-uri': ['none'],
-				'form-action': ['none']
+				'form-action': ['none'],
+				// Turnstile widget (send form) — SPEC §13.
+				'frame-src': ['https://challenges.cloudflare.com']
 			}
 		},
 		alias: {

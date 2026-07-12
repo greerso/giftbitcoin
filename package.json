@@ -9,6 +9,7 @@
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"check:worker": "tsc --noEmit -p worker/tsconfig.json",
 		"test": "vitest run",
 		"test:watch": "vitest"
 	},

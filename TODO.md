@@ -73,6 +73,7 @@ via `wrangler secret put TURNSTILE_SECRET`.
 - [x] **B1b** — DNS CNAMEs `@`/`www` → tunnel (proxied) exist; **redirect loop fixed 2026-07-12** by switching the tunnel ingress from `http://localhost:80` → `https://localhost:443` + `originServerName` (strict TLS, mirrors magnolia). `giftbitcoin.app` + `www` now live (200). See [docs/DEPLOY.md](./docs/DEPLOY.md).
 - [x] **B2** — Claim links use `window.location.origin`, so on `giftbitcoin.app` they are `https://giftbitcoin.app/c#…` automatically.
 - [ ] **B3** — Optional: email link previews / OG (no secrets in unfurls)
+- [ ] **B4** — **Installable app (PWA)** — “Add to Home Screen” / install as app on iOS + Android + desktop. Issue **#17** (manifest, icons, theme-color, `display: standalone`). **No** offline claim of funds via service-worker caching of secrets — SW only for shell if at all; fragment secrets stay out of Cache Storage; CSP + static adapter must stay intact. Related: B3 icons/OG can share assets.
 - [ ] **B5** — Auto-deploy webhook main → Coolify (optional)
 
 ---

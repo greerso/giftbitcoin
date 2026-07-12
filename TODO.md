@@ -10,6 +10,15 @@ Source of truth for backlog items.
 
 ---
 
+## Session status — 2026-07-12 (send-mechanism design)
+
+**Done:** send-mechanism design spec merged to main (#11, `docs/superpowers/specs/2026-07-12-send-mechanism-design.md`) — rev 2 after full critical assessment (19 findings applied + 20-agent verification). Decisions: generated-only 4-word EFF passphrases, Tier 1 Web Share / Tier 2 email via **Cloudflare Worker + Email Service**, three-segment QR fragment variant.
+
+**Next (not started):**
+- [ ] Implement send mechanism per the spec: SPEC amendments first (§5.1/§10.1/§13/§14.3.3 carve-outs, CSP Turnstile entry, trust-model row), then create-flow delivery choice, shared 3-segment parser, claim normalization + retry-raw back-compat, Worker (`/api/send` + Turnstile + address recompute + esplora fail-closed), claim-link QR rendering (new; no QR lib in repo yet).
+
+---
+
 ## Session status — 2026-07-11 (design implementation + crypto hardening)
 
 **Branch:** `feature/giftbitcoin-design`

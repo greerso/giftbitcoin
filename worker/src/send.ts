@@ -124,7 +124,8 @@ const esc = (s: string) =>
 
 /** Fixed branded template. The claim link is the only link; never a passphrase. */
 export function renderEmail(link: string, fromName: string, message: string) {
-	const who = fromName ? `${esc(fromName)} sent` : 'Someone sent';
+	const who = fromName ? `${esc(fromName)} sent` : 'Someone sent'; // HTML body only
+	const whoText = fromName ? `${fromName} sent` : 'Someone sent'; // plain-text body — no HTML escaping needed
 	const note = message
 		? `<p style="margin:16px 0;padding:12px 16px;background:#f7f2e7;border-radius:10px;color:#4a4436;">${esc(message).replace(/\n/g, '<br>')}</p>`
 		: '';
@@ -135,7 +136,7 @@ ${note}
 <p style="font-size:14px;color:#6b6355;">The sender will give you <strong>4 secret words</strong> to open it — this email alone can't claim the gift.</p>
 <p style="font-size:12px;color:#9a8e71;">Bitcoin testnet4 — no real value. If the button doesn't work, copy this link:<br>${link}</p>
 </div>`;
-	const text = `${who} you a Bitcoin gift.
+	const text = `${whoText} you a Bitcoin gift.
 ${message ? '\n"' + message + '"\n' : ''}
 Open it: ${link}
 

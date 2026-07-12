@@ -10,6 +10,7 @@ import {
 	type VerifyResult
 } from '$lib/crypto/create-gift';
 import { bytesToB64url, b64urlToBytes } from '$lib/crypto/keys';
+import { normalizePassphraseInput } from '$lib/crypto/passphrase';
 import { ACTIVE_NETWORK } from '$config/network';
 
 export interface GiftMeta {
@@ -175,4 +176,25 @@ export async function verifyShareCard(
 	} catch (e) {
 		return { ok: false, errors: [e instanceof Error ? e.message : String(e)] };
 	}
+}
+
+/**
+ * Claim-side passphrase check: normalized input first (case/whitespace/NFC),
+ * then one retry with the raw NFC-only input — pre-2026-07-12 gifts carry
+ * human-chosen passphrases derived NFC-only, and must stay claimable without
+ * a version marker. Each attempt is a full Argon2id run by design.
+ */
+export async function verifyShareCardPassphrase(
+	sc: Record<string, unknown>,
+	rawInput: string
+): Promise<{ ok: boolean; passphrase: string; errors: string[] }> {
+	const normalized = normalizePassphraseInput(rawInput);
+	const first = await verifyShareCard(sc, normalized);
+	if (first.ok) return { ok: true, passphrase: normalized, errors: [] };
+	const raw = rawInput.normalize('NFC');
+	if (raw !== normalized) {
+		const second = await verifyShareCard(sc, raw);
+		if (second.ok) return { ok: true, passphrase: raw, errors: [] };
+	}
+	return { ok: false, passphrase: normalized, errors: first.errors };
 }

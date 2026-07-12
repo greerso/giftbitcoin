@@ -3,8 +3,12 @@ import {
 	fullClaimLink,
 	claimLinkWithPassphrase,
 	parseShareCardFragment,
-	fragmentPassphrase
+	fragmentPassphrase,
+	buildPackages,
+	verifyShareCardPassphrase
 } from '../../src/lib/gift-package';
+import { createGift } from '../../src/lib/crypto/create-gift';
+import * as btc from '@scure/btc-signer';
 
 const card = { script: { address: 'tb1p_test' }, claim: { secret_b64url: 'AAAA' } };
 const frag = (link: string) => link.slice(link.indexOf('#') + 1);
@@ -46,4 +50,27 @@ describe('fragment grammar (SPEC §5.4)', () => {
 		expect(() => fragmentPassphrase('g1.AAAA.!!')).toThrow(); // invalid b64url passphrase
 		expect(() => parseShareCardFragment('v1.AAAA')).toThrow(); // not g1.
 	});
+});
+
+describe('verifyShareCardPassphrase (back-compat retry)', () => {
+	// Argon2id (64 MiB, t=3) runs twice here — slow test (~seconds), keep it single.
+	it('normalized input claims a generated-words gift; raw-retry claims a legacy human-passphrase gift', async () => {
+		// new-style gift: generated words (already normalized form)
+		const g1 = await createGift({ policy: 'refund_self', passphrase: 'correct horse battery staple', network: btc.TEST_NETWORK });
+		const sc1 = buildPackages(g1, { amountExpectedSats: 10_000 }).share_card;
+		const r1 = await verifyShareCardPassphrase(sc1, '  Correct \t Horse battery STAPLE ');
+		expect(r1.ok).toBe(true);
+		expect(r1.passphrase).toBe('correct horse battery staple');
+
+		// legacy gift: human-chosen passphrase with case/punctuation (pre-normalization era)
+		const g2 = await createGift({ policy: 'refund_self', passphrase: 'Satoshi Nakamoto 2009!', network: btc.TEST_NETWORK });
+		const sc2 = buildPackages(g2, { amountExpectedSats: 10_000 }).share_card;
+		const r2 = await verifyShareCardPassphrase(sc2, 'Satoshi Nakamoto 2009!');
+		expect(r2.ok).toBe(true);
+		expect(r2.passphrase).toBe('Satoshi Nakamoto 2009!'); // raw retry won
+
+		// wrong words fail cleanly
+		const r3 = await verifyShareCardPassphrase(sc1, 'wrong words entirely here');
+		expect(r3.ok).toBe(false);
+	}, 120_000);
 });

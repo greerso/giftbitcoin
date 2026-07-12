@@ -11,7 +11,20 @@
 		verifyShareCard,
 		type GiftPackages
 	} from '$lib/gift-package';
-	import { fetchBtcUsd, usdToBtc, usdToSats, satsToBtc, tipSats, FALLBACK_BTC_USD } from '$lib/pricing';
+	import {
+		fetchBtcPrices,
+		fiatToSats,
+		btcToSats,
+		satsToBtc,
+		satsToFiat,
+		tipSats,
+		detectLocaleFiat,
+		fallbackPrices,
+		FIAT_PRESETS,
+		BTC_PRESETS,
+		type BtcPrices,
+		type PricedFiat
+	} from '$lib/pricing';
 	import { fmtBtc, money } from '$lib/format';
 	import { getUtxos, confirmedValue } from '$lib/esplora';
 	import { T_PRESETS, MIN_GIFT_SATS } from '$config/network';
@@ -22,11 +35,16 @@
 	import { generatePassphrase } from '$lib/crypto/passphrase';
 
 	type Step = 'c1' | 'c3' | 'c4';
+	type Denom = 'fiat' | 'btc';
 	let step = $state<Step>('c1');
-	let price = $state(FALLBACK_BTC_USD);
+	let prices = $state<BtcPrices>(fallbackPrices());
 
 	let design = $state('classic');
-	let usdAmount = $state('50');
+	/** Amount field — unit is `denom` (fiat currency or BTC). */
+	let amountInput = $state('50');
+	let denom = $state<Denom>('fiat');
+	let fiatCode = $state<PricedFiat>('USD');
+	let fiatSymbol = $state('$');
 	let toName = $state('');
 	let fromName = $state('');
 	let message = $state('');
@@ -38,6 +56,7 @@
 	let words = $state('');
 	let wordsCopied = $state(false);
 	const passActive = $derived(delivery === 'email' || passOptIn);
+	const fiatPerBtc = $derived(prices[fiatCode] || prices.USD);
 
 	let canWebShare = $state(false); // set in onMount: browser-only API
 	let toEmail = $state('');
@@ -76,26 +95,51 @@
 
 	let pollGen = 0;
 
-	const PRESETS = ['25', '50', '100', '250'];
-	const usd = $derived(parseFloat(usdAmount) || 0);
-	const sats = $derived(usdToSats(usd, price));
-	const btcStr = $derived(fmtBtc(usdToBtc(usd, price)));
-	const amountValid = $derived(usd > 0 && sats >= MIN_GIFT_SATS);
-	// SPEC §8.1: tip is normatively floor(gift_sats × pct) — sats first, USD display derived from it.
+	const amountNum = $derived(parseFloat(amountInput) || 0);
+	const sats = $derived(
+		denom === 'btc' ? btcToSats(amountNum) : fiatToSats(amountNum, fiatPerBtc)
+	);
+	const btcStr = $derived(fmtBtc(satsToBtc(sats)));
+	const amountValid = $derived(amountNum > 0 && sats >= MIN_GIFT_SATS);
+	// SPEC §8.1: tip is normatively floor(gift_sats × pct) — sats first, fiat display derived.
 	const suggestedTipSats = $derived(tipSats(sats, tipPct));
-	const tipUsd = $derived(satsToBtc(suggestedTipSats) * price);
-	const usdDisplay = $derived(money(usd));
-	const isCustom = $derived(!PRESETS.includes(usdAmount));
+	const tipFiat = $derived(satsToFiat(suggestedTipSats, fiatPerBtc));
+	const fiatDisplay = $derived(money(satsToFiat(sats, fiatPerBtc), fiatSymbol));
+	const amountPresets = $derived(denom === 'btc' ? ([...BTC_PRESETS] as string[]) : ([...FIAT_PRESETS] as string[]));
+	const isCustom = $derived(!amountPresets.includes(amountInput));
+	const amountTail = $derived(
+		denom === 'btc' ? ` (≈ ${money(satsToFiat(sats, fiatPerBtc), fiatSymbol)})` : " at today's rate."
+	);
 	const fundedBtcStr = $derived(fmtBtc(satsToBtc(fundedSats)));
-	const fundedUsd = $derived(money(satsToBtc(fundedSats) * price));
+	const fundedFiat = $derived(money(satsToFiat(fundedSats, fiatPerBtc), fiatSymbol));
 	const underfunded = $derived(fundedSats > 0 && fundedSats < sats);
+
+	function toggleDenom() {
+		const next: Denom = denom === 'fiat' ? 'btc' : 'fiat';
+		// Convert the current gift size into the other unit so the sats target stays put.
+		if (sats > 0) {
+			if (next === 'btc') amountInput = fmtBtc(satsToBtc(sats));
+			else {
+				const f = satsToFiat(sats, fiatPerBtc);
+				amountInput = String(Math.round(f * 100) / 100);
+			}
+		} else {
+			amountInput = next === 'btc' ? BTC_PRESETS[1] : FIAT_PRESETS[1];
+		}
+		denom = next;
+	}
 	// The one key-loss predicate all three exit guards share (unload, navigation,
 	// regenerate). A fresh page has gift === null, so it stays inert until step c3
 	// has shown an address.
 	const unsavedKeys = $derived(!!gift && !backedUp);
 
 	onMount(async () => {
-		price = await fetchBtcUsd();
+		const locale = detectLocaleFiat();
+		fiatCode = locale.code;
+		fiatSymbol = locale.symbol;
+		denom = locale.defaultDenom;
+		if (denom === 'btc') amountInput = BTC_PRESETS[1];
+		prices = await fetchBtcPrices();
 		canWebShare = navigator.canShare?.({ url: location.href }) ?? !!navigator.share;
 	});
 
@@ -146,7 +190,7 @@
 	async function continueToPay() {
 		error = '';
 		if (!amountValid) {
-			error = `Please enter at least ${money(satsToBtc(MIN_GIFT_SATS) * price)} (${MIN_GIFT_SATS.toLocaleString()} sats).`;
+			error = `Please enter at least ${money(satsToFiat(MIN_GIFT_SATS, fiatPerBtc), fiatSymbol)} (${MIN_GIFT_SATS.toLocaleString()} sats).`;
 			return;
 		}
 		busy = true;
@@ -364,7 +408,7 @@
 	<h2 class="h2">Choose a card</h2>
 
 	<div class="card-wrap">
-		<GiftCard designId={design} {usdDisplay} {btcStr} forName={toName.trim()} />
+		<GiftCard designId={design} usdDisplay={fiatDisplay} {btcStr} forName={toName.trim()} />
 	</div>
 
 	<div class="thumbs">
@@ -378,18 +422,37 @@
 
 	<div class="label-caps">Amount</div>
 	<div class="chips">
-		{#each PRESETS as p}
-			<button class="chip" class:on={usdAmount === p} onclick={() => (usdAmount = p)}>${p}</button>
+		{#each amountPresets as p}
+			<button class="chip" class:on={amountInput === p} onclick={() => (amountInput = p)}>
+				{denom === 'btc' ? '₿' : fiatSymbol}{p}
+			</button>
 		{/each}
-		<button class="chip" class:on={isCustom} onclick={() => (usdAmount = '')}>Custom</button>
+		<button class="chip" class:on={isCustom} onclick={() => (amountInput = '')}>Custom</button>
 	</div>
-	<div class="usd-box" class:active={isCustom}>
-		<span class="usd-sign">$</span>
-		<input class="usd-input" bind:value={usdAmount} inputmode="decimal" placeholder="Enter any amount" />
-		<span class="usd-unit">USD</span>
+	<div class="amount-field">
+		<button
+			type="button"
+			class="denom-rail"
+			onclick={toggleDenom}
+			title="Flip between local currency and bitcoin"
+			aria-label="Toggle amount denomination"
+		>
+			<span class="denom-lab" class:on={denom === 'fiat'}>{fiatCode}</span>
+			<span class="denom-swap" aria-hidden="true">⇅</span>
+			<span class="denom-lab" class:on={denom === 'btc'}>BTC</span>
+		</button>
+		<span class="amount-prefix">{denom === 'btc' ? '₿' : fiatSymbol}</span>
+		<input
+			class="amount-input"
+			bind:value={amountInput}
+			inputmode="decimal"
+			placeholder={denom === 'btc' ? '0.001' : '50'}
+		/>
+		<span class="amount-suffix">{denom === 'btc' ? 'BTC' : fiatCode}</span>
 	</div>
 	<p class="amount-note">
-		They'll receive real bitcoin — about <strong>{btcStr} BTC</strong> at today's rate.
+		They'll receive real bitcoin — about <strong>{btcStr} BTC</strong>
+		{amountTail}
 	</p>
 
 	<div class="label-caps">Who's it for?</div>
@@ -465,7 +528,7 @@
 			<div class="card">
 				<div class="adv-title">Project tip <span class="muted">— suggested</span></div>
 				<div class="adv-note mb">
-					Currently {tipPct}% ({money(tipUsd)}). Recorded in your backup for the open-source project —
+					Currently {tipPct}% ({money(tipFiat, fiatSymbol)}). Recorded in your backup for the open-source project —
 					tip collection isn't wired up in this testnet build, so you only fund the gift itself.
 				</div>
 				<div class="chips tight">
@@ -548,16 +611,16 @@
 {#if step === 'c4' && gift && packages}
 	<div class="success-check">✓</div>
 	<h2 class="h2">Your gift card is ready</h2>
-	<p class="lede">{fundedBtcStr} BTC (≈ {fundedUsd}) is confirmed and waiting to be redeemed.</p>
+	<p class="lede">{fundedBtcStr} BTC (≈ {fundedFiat}) is confirmed and waiting to be redeemed.</p>
 	{#if underfunded}
 		<div class="warn-box mtb">
-			Heads up: this is less than the {usdDisplay} you intended. The recipient will still be able to
+			Heads up: this is less than the {fiatDisplay} you intended. The recipient will still be able to
 			redeem the confirmed amount.
 		</div>
 	{/if}
 
 	<div class="card-wrap">
-		<GiftCard designId={design} {usdDisplay} {btcStr} message={message.trim()} fromName={fromName.trim()} />
+		<GiftCard designId={design} usdDisplay={fiatDisplay} {btcStr} message={message.trim()} fromName={fromName.trim()} />
 	</div>
 
 	<div class="warn-box mtb">
@@ -685,39 +748,72 @@
 	.chips.tight {
 		margin-bottom: 0;
 	}
-	.usd-box {
+	.amount-field {
 		display: flex;
-		align-items: center;
-		gap: 8px;
-		background: #fff;
+		align-items: stretch;
 		border: 1.5px solid var(--border-strong);
-		border-radius: 12px;
-		padding: 12px 16px;
+		border-radius: 14px;
+		min-height: 66px;
 		margin-bottom: 8px;
+		background: #fff;
+		overflow: hidden;
 	}
-	.usd-box.active {
-		border: 2px solid var(--amber);
+	.denom-rail {
+		flex: none;
+		width: 60px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 2px;
+		background: var(--surface);
+		border: none;
+		border-right: 1px solid var(--border);
+		cursor: pointer;
+		padding: 8px 0;
+		font-family: inherit;
 	}
-	.usd-sign {
-		font-size: 18px;
-		font-weight: 600;
+	.denom-rail:hover {
+		background: #f3ebdb;
+	}
+	.denom-lab {
+		font-size: 12px;
+		font-weight: 700;
 		color: var(--tan);
 	}
-	.usd-input {
+	.denom-lab.on {
+		color: var(--amber);
+	}
+	.denom-swap {
+		font-size: 11px;
+		color: var(--muted);
+		line-height: 1;
+	}
+	.amount-prefix {
+		align-self: center;
+		padding-left: 12px;
+		font-weight: 600;
+		color: var(--muted);
+	}
+	.amount-input {
 		flex: 1;
-		min-width: 0;
 		border: none;
 		outline: none;
-		background: transparent;
 		font-size: 18px;
 		font-weight: 600;
-		padding: 0;
+		font-family: inherit;
+		min-width: 0;
+		background: transparent;
+		padding: 12px 8px;
 	}
-	.usd-unit {
+	.amount-suffix {
+		align-self: center;
+		padding-right: 14px;
 		font-size: 13px;
-		font-weight: 500;
+		font-weight: 600;
 		color: var(--tan);
 	}
+
 	.amount-note {
 		font-size: 13.5px;
 		color: var(--muted);

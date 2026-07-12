@@ -6,15 +6,18 @@ export function fmtBtc(n: number): string {
 	return s === '' ? '0' : s;
 }
 
-/** USD with cents only when non-integer ("$50", "$49.99"). */
-export function money(v: number): string {
-	return (
-		'$' +
-		(Math.round(v * 100) / 100).toLocaleString('en-US', {
-			minimumFractionDigits: v % 1 ? 2 : 0,
-			maximumFractionDigits: 2
-		})
-	);
+/**
+ * Fiat display: symbol + number with cents only when non-integer.
+ * Default symbol `$` keeps existing call sites working.
+ */
+export function money(v: number, symbol = '$'): string {
+	const n = (Math.round(v * 100) / 100).toLocaleString('en-US', {
+		minimumFractionDigits: v % 1 ? 2 : 0,
+		maximumFractionDigits: 2
+	});
+	// CHF uses a trailing-space prefix ("CHF 50"); others are symbol-prefix.
+	if (symbol.endsWith(' ')) return symbol + n;
+	return symbol + n;
 }
 
 /** Middle-ellipsis a long address/txid for review rows. */

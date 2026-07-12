@@ -101,11 +101,46 @@ export function fullClaimLink(shareCard: Record<string, unknown>, origin: string
 	return `${origin}/c#g1.${bytesToB64url(new TextEncoder().encode(json))}`;
 }
 
-export function parseShareCardFragment(fragment: string): Record<string, unknown> {
+/**
+ * SPEC §5.4 fragment grammar: g1.<share_card_b64url> with an optional third
+ * segment g1.<card>.<passphrase_b64url> (QR-only, self-sent opt-in gifts).
+ * Dots don't occur in base64url, so splitting is unambiguous.
+ */
+function splitGiftFragment(fragment: string): { card: string; pass?: string } {
 	const frag = fragment.startsWith('#') ? fragment.slice(1) : fragment;
 	if (!frag.startsWith('g1.')) throw new Error('not a full gift link');
-	const bytes = b64urlToBytes(frag.slice('g1.'.length));
+	const segs = frag.slice('g1.'.length).split('.');
+	if (segs.length > 2 || segs.some((s) => s.length === 0)) {
+		throw new Error('malformed gift fragment');
+	}
+	return { card: segs[0], pass: segs[1] };
+}
+
+export function parseShareCardFragment(fragment: string): Record<string, unknown> {
+	const bytes = b64urlToBytes(splitGiftFragment(fragment).card);
 	return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+/** Decoded passphrase from a three-segment fragment; undefined on two-segment links. */
+export function fragmentPassphrase(fragment: string): string | undefined {
+	const { pass } = splitGiftFragment(fragment);
+	if (pass === undefined) return undefined;
+	return new TextDecoder().decode(b64urlToBytes(pass)).normalize('NFC');
+}
+
+/**
+ * Three-segment claim link — QR rendering for self-sent opt-in gifts ONLY.
+ * Copy-link/share/email paths must keep using fullClaimLink (two-segment).
+ */
+export function claimLinkWithPassphrase(
+	shareCard: Record<string, unknown>,
+	origin: string,
+	passphrase: string
+): string {
+	const norm = passphrase.normalize('NFC');
+	if (norm.length === 0) throw new Error('passphrase must not be empty');
+	const pass = bytesToB64url(new TextEncoder().encode(norm));
+	return `${fullClaimLink(shareCard, origin)}.${pass}`;
 }
 
 /** True if the fragment (with or without a leading '#') claims to be a g1. payload. */

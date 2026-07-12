@@ -2,14 +2,36 @@
 	import '$lib/styles/app.css';
 	import favicon from '$lib/assets/favicon.svg';
 	import { nav } from '$lib/nav.svelte';
+	import InstallPrompt from '$lib/components/InstallPrompt.svelte';
 	let { children } = $props();
+
+	const site = 'https://giftbitcoin.app';
+	const title = 'Gift Bitcoin (testnet) · giftbitcoin.app';
+	const description =
+		'Non-custodial Bitcoin e-gift cards. Create a gift, share a link, redeem to a wallet you control.';
+	// Absolute icon only — never claim-link fragments in unfurls (TODO B3).
+	const ogImage = `${site}/icons/icon-512.png`;
 </script>
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
-	<title>Gift Bitcoin (testnet) · giftbitcoin.app</title>
+	<title>{title}</title>
 	<meta name="referrer" content="no-referrer" />
 	<meta name="theme-color" content="#C97210" />
+	<meta name="description" content={description} />
+	<meta property="og:type" content="website" />
+	<meta property="og:site_name" content="Gift Bitcoin" />
+	<meta property="og:title" content="Gift Bitcoin — e-gift cards that are real bitcoin" />
+	<meta property="og:description" content={description} />
+	<meta property="og:url" content={site} />
+	<meta property="og:image" content={ogImage} />
+	<meta property="og:image:width" content="512" />
+	<meta property="og:image:height" content="512" />
+	<meta property="og:image:alt" content="Gift Bitcoin app icon" />
+	<meta name="twitter:card" content="summary" />
+	<meta name="twitter:title" content="Gift Bitcoin — e-gift cards that are real bitcoin" />
+	<meta name="twitter:description" content={description} />
+	<meta name="twitter:image" content={ogImage} />
 </svelte:head>
 
 <div class="app">
@@ -48,6 +70,8 @@
 			<a href="/recover">Recover</a>
 		</div>
 	</footer>
+
+	<InstallPrompt />
 </div>
 
 <style>

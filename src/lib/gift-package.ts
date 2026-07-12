@@ -10,6 +10,7 @@ import {
 	type VerifyResult
 } from '$lib/crypto/create-gift';
 import { bytesToB64url, b64urlToBytes } from '$lib/crypto/keys';
+import { normalizePassphraseInput } from '$lib/crypto/passphrase';
 import { ACTIVE_NETWORK } from '$config/network';
 
 export interface GiftMeta {
@@ -94,18 +95,54 @@ export function buildPackages(gift: CreatedGift, meta: GiftMeta): GiftPackages {
 /**
  * Self-sufficient claim link: the whole share_card, so the recipient's page can
  * show the card and locate the funds from the link alone (the SPEC §5.4 g1.
- * payload). Fragment-only — never sent to a server.
+ * payload). Fragment-only — never sent to a server, except via the SPEC §5.1
+ * email-relay carve-out (POST /api/send, passphrase-committed gifts only).
  */
 export function fullClaimLink(shareCard: Record<string, unknown>, origin: string): string {
 	const json = JSON.stringify(shareCard);
 	return `${origin}/c#g1.${bytesToB64url(new TextEncoder().encode(json))}`;
 }
 
-export function parseShareCardFragment(fragment: string): Record<string, unknown> {
+/**
+ * SPEC §5.4 fragment grammar: g1.<share_card_b64url> with an optional third
+ * segment g1.<card>.<passphrase_b64url> (QR-only, self-sent opt-in gifts).
+ * Dots don't occur in base64url, so splitting is unambiguous.
+ */
+function splitGiftFragment(fragment: string): { card: string; pass?: string } {
 	const frag = fragment.startsWith('#') ? fragment.slice(1) : fragment;
 	if (!frag.startsWith('g1.')) throw new Error('not a full gift link');
-	const bytes = b64urlToBytes(frag.slice('g1.'.length));
+	const segs = frag.slice('g1.'.length).split('.');
+	if (segs.length > 2 || segs.some((s) => s.length === 0)) {
+		throw new Error('malformed gift fragment');
+	}
+	return { card: segs[0], pass: segs[1] };
+}
+
+export function parseShareCardFragment(fragment: string): Record<string, unknown> {
+	const bytes = b64urlToBytes(splitGiftFragment(fragment).card);
 	return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+/** Decoded passphrase from a three-segment fragment; undefined on two-segment links. */
+export function fragmentPassphrase(fragment: string): string | undefined {
+	const { pass } = splitGiftFragment(fragment);
+	if (pass === undefined) return undefined;
+	return new TextDecoder().decode(b64urlToBytes(pass)).normalize('NFC');
+}
+
+/**
+ * Three-segment claim link — QR rendering for self-sent opt-in gifts ONLY.
+ * Copy-link/share/email paths must keep using fullClaimLink (two-segment).
+ */
+export function claimLinkWithPassphrase(
+	shareCard: Record<string, unknown>,
+	origin: string,
+	passphrase: string
+): string {
+	const norm = passphrase.normalize('NFC');
+	if (norm.length === 0) throw new Error('passphrase must not be empty');
+	const pass = bytesToB64url(new TextEncoder().encode(norm));
+	return `${fullClaimLink(shareCard, origin)}.${pass}`;
 }
 
 /** True if the fragment (with or without a leading '#') claims to be a g1. payload. */
@@ -140,4 +177,25 @@ export async function verifyShareCard(
 	} catch (e) {
 		return { ok: false, errors: [e instanceof Error ? e.message : String(e)] };
 	}
+}
+
+/**
+ * Claim-side passphrase check: normalized input first (case/whitespace/NFC),
+ * then one retry with the raw NFC-only input — pre-2026-07-12 gifts carry
+ * human-chosen passphrases derived NFC-only, and must stay claimable without
+ * a version marker. Each attempt is a full Argon2id run by design.
+ */
+export async function verifyShareCardPassphrase(
+	sc: Record<string, unknown>,
+	rawInput: string
+): Promise<{ ok: boolean; passphrase: string; errors: string[] }> {
+	const normalized = normalizePassphraseInput(rawInput);
+	const first = await verifyShareCard(sc, normalized);
+	if (first.ok) return { ok: true, passphrase: normalized, errors: [] };
+	const raw = rawInput.normalize('NFC');
+	if (raw !== normalized) {
+		const second = await verifyShareCard(sc, raw);
+		if (second.ok) return { ok: true, passphrase: raw, errors: [] };
+	}
+	return { ok: false, passphrase: normalized, errors: first.errors };
 }

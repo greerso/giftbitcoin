@@ -66,6 +66,39 @@ SSL: Cloudflare edge terminates HTTPS to the client; the tunnel then speaks HTTP
 
 ---
 
+## Send relay Worker (/api/send)
+
+The email relay is a Cloudflare Worker (`worker/`) on the giftbitcoin.app zone — the static
+origin is untouched. One-time setup, in order:
+
+1. **Email Sending onboarding:** `npx wrangler email sending enable giftbitcoin.app`
+   (adds DKIM/SPF records; the Worker sends from `gifts@giftbitcoin.app`).
+2. **Turnstile widget:** create in the CF dashboard (Turnstile → Add widget, mode: managed,
+   domain `giftbitcoin.app`). Put the **site key** in `src/config/send.ts`
+   (`TURNSTILE_SITE_KEY` — currently the dummy always-pass key) and rebuild/redeploy the
+   static app. Store the **secret**: `npx wrangler secret put TURNSTILE_SECRET -c worker/wrangler.jsonc`.
+3. **Deploy:** `npx wrangler deploy -c worker/wrangler.jsonc` — the route
+   `giftbitcoin.app/api/send` is in the config. Rate limits + esplora base are vars there.
+4. **Smoke test:** create a passphrase (email-delivery) gift on the live site, fund it,
+   and send to an external email address you control but that has **not** been pre-verified
+   or added to the Cloudflare account in any way (not a destination address, not an account
+   login) — this confirms the Worker can deliver to arbitrary recipients, not just addresses
+   Cloudflare already trusts. Check the mail arrives and `POST /api/send` with a
+   three-segment link returns 400. If delivery fails with an "allowed list" or
+   recipient-restriction-shaped error, the `send_email` binding config needs review before
+   this feature can be trusted with real (non-account-holder) recipients.
+
+**Note:** Everything in Tasks 8–10 (Turnstile verify, esplora funding check with Cache API, `unsafe`
+ratelimit bindings, `env.EMAIL.send()`) was tested against Node-stubbed fetch/mocks in vitest, NOT the real
+Cloudflare Workers runtime. Binding shapes, `caches.default` behavior, and the ratelimit binding only
+execute for real at deploy — treat the first live deployment as the actual first verification of these
+runtime behaviors.
+
+The Worker stores nothing persistent (rate-limit counters + a 60 s funding-check cache).
+Interim domains (giftbitcoin.greerso.com) are rejected by `ALLOWED_ORIGIN` by design.
+
+---
+
 ## Architecture
 
 ```text

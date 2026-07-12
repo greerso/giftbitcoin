@@ -9,6 +9,7 @@
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"check:worker": "tsc --noEmit -p worker/tsconfig.json",
 		"test": "vitest run",
 		"test:watch": "vitest"
 	},
@@ -28,6 +29,7 @@
 		"@noble/hashes": "^1.7.1",
 		"@scure/base": "^1.2.4",
 		"@scure/btc-signer": "^1.6.0",
-		"hash-wasm": "^4.12.0"
+		"hash-wasm": "^4.12.0",
+		"qr": "^0.6.0"
 	}
 }

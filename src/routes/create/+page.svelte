@@ -5,6 +5,7 @@
 	import { createGift, type CreatedGift } from '$lib/crypto/create-gift';
 	import {
 		buildPackages,
+		claimLinkWithPassphrase,
 		fullClaimLink,
 		parseShareCardFragment,
 		verifyShareCard,
@@ -14,8 +15,11 @@
 	import { fmtBtc, money } from '$lib/format';
 	import { getUtxos, confirmedValue } from '$lib/esplora';
 	import { T_PRESETS, MIN_GIFT_SATS } from '$config/network';
+	import { TURNSTILE_SITE_KEY, SEND_API_PATH } from '$config/send';
 	import { CARD_DESIGNS } from '$lib/giftcards';
 	import GiftCard from '$lib/components/GiftCard.svelte';
+	import Qr from '$lib/components/Qr.svelte';
+	import { generatePassphrase } from '$lib/crypto/passphrase';
 
 	type Step = 'c1' | 'c3' | 'c4';
 	let step = $state<Step>('c1');
@@ -29,8 +33,31 @@
 	let advOpen = $state(false);
 	let tipPct = $state(3);
 	let expiryDays = $state<30 | 90 | 180>(90);
-	let usePass = $state(false);
-	let passphrase = $state('');
+	let delivery = $state<'self' | 'email'>('self');
+	let passOptIn = $state(false);
+	let words = $state('');
+	let wordsCopied = $state(false);
+	const passActive = $derived(delivery === 'email' || passOptIn);
+
+	let canWebShare = $state(false); // set in onMount: browser-only API
+	let toEmail = $state('');
+	let sendState = $state<'idle' | 'sending' | 'sent' | 'error'>('idle');
+	let sendError = $state('');
+	let turnstileToken = $state('');
+	let turnstileWidget: string | undefined;
+
+	function ensureWords() {
+		if (!words) words = generatePassphrase();
+	}
+	async function copyWords() {
+		try {
+			await navigator.clipboard.writeText(words);
+			wordsCopied = true;
+			setTimeout(() => (wordsCopied = false), 1800);
+		} catch {
+			wordsCopied = false; // words are visible to select manually
+		}
+	}
 
 	let busy = $state(false);
 	let error = $state('');
@@ -69,6 +96,7 @@
 
 	onMount(async () => {
 		price = await fetchBtcUsd();
+		canWebShare = navigator.canShare?.({ url: location.href }) ?? !!navigator.share;
 	});
 
 	$effect(() => {
@@ -124,7 +152,8 @@
 		busy = true;
 		try {
 			cancelPoll(); // kill any poll from a prior address before (re)building
-			const pass = usePass && passphrase ? passphrase : undefined;
+			if (passActive) ensureWords();
+			const pass = passActive ? words : undefined;
 			const key = { expiry: expiryDays, usePass: !!pass, pass: pass ?? '' };
 			// Regenerate keys only if the security params changed — otherwise keep the
 			// existing (possibly-funded) address so a name tweak never orphans funds.
@@ -199,6 +228,14 @@
 		packages ? fullClaimLink(packages.share_card, window.location.origin) : ''
 	);
 
+	// Three-segment QR ONLY for self-sent passphrase-opt-in gifts (SPEC §5.4);
+	// email-delivery gifts and all copy/share paths stay two-segment.
+	const qrLink = $derived(
+		packages && delivery === 'self' && passOptIn && words
+			? claimLinkWithPassphrase(packages.share_card, window.location.origin, words)
+			: shareLink
+	);
+
 	async function copyLink() {
 		if (!shareLink) return;
 		try {
@@ -208,6 +245,71 @@
 			setTimeout(() => (linkCopied = false), 1800);
 		} catch {
 			linkCopyFailed = true; // reveal the link text for manual copy
+		}
+	}
+
+	async function webShare() {
+		try {
+			await navigator.share({ url: shareLink });
+		} catch {
+			/* user cancel / unsupported — the copy button is right there (silent fallback) */
+		}
+	}
+
+	/** Svelte action: explicit Turnstile render (widget div mounts long after page load). */
+	function turnstile(el: HTMLElement) {
+		const render = () => {
+			turnstileWidget = (window as any).turnstile.render(el, {
+				sitekey: TURNSTILE_SITE_KEY,
+				action: 'send-email',
+				callback: (t: string) => (turnstileToken = t),
+				'expired-callback': () => (turnstileToken = '')
+			});
+		};
+		if ((window as any).turnstile) render();
+		else {
+			(window as any).__gbTurnstileOnload = render;
+			const s = document.createElement('script');
+			s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?onload=__gbTurnstileOnload&render=explicit';
+			s.async = true;
+			s.defer = true;
+			document.head.appendChild(s);
+		}
+	}
+
+	async function sendGiftEmail() {
+		sendError = '';
+		const to = toEmail.trim();
+		if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+			sendError = 'Enter the recipient’s email address.';
+			return;
+		}
+		if (!turnstileToken) {
+			sendError = 'Please complete the human check first.';
+			return;
+		}
+		sendState = 'sending';
+		try {
+			const res = await fetch(SEND_API_PATH, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					to,
+					link: shareLink, // ALWAYS the two-segment link — never qrLink
+					from_name: fromName.trim() || undefined,
+					message: message.trim() || undefined,
+					turnstile_token: turnstileToken
+				})
+			});
+			if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? `HTTP ${res.status}`);
+			sendState = 'sent';
+		} catch {
+			sendState = 'error';
+			sendError = "The email couldn't be sent right now — copy the link and send it yourself instead.";
+		} finally {
+			// Turnstile tokens are single-use: siteverify consumed it either way.
+			turnstileToken = '';
+			(window as any).turnstile?.reset?.(turnstileWidget);
 		}
 	}
 
@@ -295,7 +397,64 @@
 		<input bind:value={toName} placeholder="To (their name)" />
 		<input bind:value={fromName} placeholder="From (you)" />
 	</div>
-	<textarea bind:value={message} placeholder="Add a short message (optional)" rows="2"></textarea>
+	<!-- 280 cap matches worker's validateSend message limit; also keeps the claim link (with embedded memo) within QR byte capacity -->
+	<textarea bind:value={message} placeholder="Add a short message (optional)" rows="2" maxlength="280"></textarea>
+
+	<div class="label-caps">How will you deliver it?</div>
+	<div class="deliver">
+		<button class="opt" class:on={delivery === 'self'} onclick={() => (delivery = 'self')}>
+			<div class="opt-title">I'll share it myself</div>
+			<div class="opt-desc">Copy the link or QR code and send it any way you like.</div>
+		</button>
+		<button
+			class="opt"
+			class:on={delivery === 'email'}
+			onclick={() => {
+				delivery = 'email';
+				ensureWords();
+			}}
+		>
+			<div class="opt-title">Email it for them</div>
+			<div class="opt-desc">We email the link — you send the 4 secret words separately.</div>
+		</button>
+	</div>
+
+	{#if delivery === 'self'}
+		<label class="pass-toggle">
+			<input
+				type="checkbox"
+				bind:checked={passOptIn}
+				class="checkbox"
+				onchange={() => passOptIn && ensureWords()}
+			/>
+			<span class="pass-label">Add 4 secret words as a second lock (recommended if sharing over chat)</span>
+		</label>
+		{#if !passOptIn}
+			<p class="deliver-note">
+				Without the secret words, this gift can never be emailed for you later — that choice is locked
+				in when you fund it.
+			</p>
+		{/if}
+	{:else}
+		<p class="deliver-note">
+			Email delivery locks in the 4 secret words below — the email alone can't claim the gift. If the
+			email is lost, you can still share the link yourself, and you can reclaim the bitcoin after
+			expiry.
+		</p>
+	{/if}
+
+	{#if passActive && words}
+		<div class="warn-box words-box">
+			<div class="label-caps">The 4 secret words</div>
+			<div class="words mono">{words}</div>
+			<button class="btn-copy" onclick={copyWords}>{wordsCopied ? 'Copied ✓' : 'Copy words'}</button>
+			<p class="deliver-note">
+				Write these down — you'll give them to the recipient separately (text or tell them). They're
+				never stored in your backup: lose them and the gift can't be redeemed, though you can reclaim
+				after expiry.
+			</p>
+		</div>
+	{/if}
 
 	<button class="adv-toggle" onclick={() => (advOpen = !advOpen)}>
 		Advanced options {advOpen ? '▴' : '▾'}
@@ -324,17 +483,6 @@
 						<button class="chip" class:on={expiryDays === d} onclick={() => (expiryDays = d as 30)}>{d} days</button>
 					{/each}
 				</div>
-			</div>
-
-			<div class="card">
-				<label class="pass-toggle">
-					<input type="checkbox" bind:checked={usePass} class="checkbox" />
-					<span class="adv-title">Require a passphrase to redeem</span>
-				</label>
-				{#if usePass}
-					<input class="mt" bind:value={passphrase} placeholder="e.g. happy birthday mel" />
-					<div class="adv-note mt-sm">Share it separately — like the PIN on a gift card.</div>
-				{/if}
 			</div>
 		</div>
 	{/if}
@@ -368,7 +516,9 @@
 	</div>
 
 	<div class="pay-card">
-		<div class="qr" aria-hidden="true">address<br />below</div>
+		<div class="qr">
+			<Qr data={`bitcoin:${gift.payment.address}`} label="Gift address QR" />
+		</div>
 		<div class="pay-addr">
 			<div class="mono addr">{gift.payment.address}</div>
 			<button class="btn-copy" onclick={copyAddr}>{copiedAddr ? 'Copied ✓' : 'Copy address'}</button>
@@ -415,10 +565,52 @@
 		like cash.
 	</div>
 
+	{#if passActive && words}
+		<div class="warn-box mtb words-box">
+			<div class="label-caps">The 4 secret words</div>
+			<div class="words mono">{words}</div>
+			<button class="btn-copy" onclick={copyWords}>{wordsCopied ? 'Copied ✓' : 'Copy words'}</button>
+			<p class="deliver-note">
+				Now text or tell them these 4 words — the {delivery === 'email' ? 'email' : 'link'} alone
+				can't claim the gift.
+			</p>
+		</div>
+	{/if}
+
+	{#if delivery === 'email'}
+		<div class="card email-card">
+			{#if sendState === 'sent'}
+				<div class="success-check small">✓</div>
+				<p class="lede">
+					Handed to the mail system — confirm it arrived when you send them the 4 words.
+				</p>
+			{:else}
+				<div class="label-caps">Email it for them</div>
+				<input bind:value={toEmail} type="email" placeholder="recipient@example.com" />
+				<div use:turnstile class="turnstile-slot"></div>
+				{#if sendError}<p class="error">{sendError}</p>{/if}
+				<button class="btn btn-primary" disabled={sendState === 'sending'} onclick={sendGiftEmail}>
+					{sendState === 'sending' ? 'Sending…' : 'Send the gift email'}
+				</button>
+				<p class="deliver-note">
+					We email only the link. You send the 4 secret words yourself — text or tell them.
+				</p>
+			{/if}
+		</div>
+	{/if}
+
 	<div class="share-actions">
-		<button class="btn btn-primary" onclick={copyLink}>
+		{#if canWebShare}
+			<button class="btn btn-primary" onclick={webShare}>Share…</button>
+		{/if}
+		<button class={canWebShare ? 'btn btn-secondary' : 'btn btn-primary'} onclick={copyLink}>
 			{linkCopied ? 'Link copied ✓' : 'Copy gift link'}
 		</button>
+		<div class="msg-links">
+			<a href={`https://wa.me/?text=${encodeURIComponent(shareLink)}`} target="_blank" rel="noreferrer">WhatsApp</a>
+			<span>·</span>
+			<a href={`sms:?&body=${encodeURIComponent(shareLink)}`}>Messages</a>
+		</div>
 		<button class="btn btn-secondary" onclick={downloadBackup}>
 			{backedUp ? 'Backup downloaded ✓' : 'Download backup'}
 		</button>
@@ -426,6 +618,17 @@
 	{#if linkCopyFailed}
 		<div class="copy-fallback mono">{shareLink}</div>
 	{/if}
+	<div class="claim-qr">
+		<Qr data={qrLink} label="Gift link QR" />
+		<p class="deliver-note">
+			{#if qrLink !== shareLink}
+				This QR includes the secret words for a single-scan in-person handoff — show it only to the
+				recipient. The copy/share link never includes them.
+			{:else}
+				Scanning opens the gift link directly.
+			{/if}
+		</p>
+	</div>
 	<div class="more-dl">
 		<button onclick={() => download('giftbitcoin-share-card.json', packages!.share_card)}>Share card file</button>
 		<span>·</span>
@@ -531,6 +734,52 @@
 	textarea {
 		margin-bottom: 22px;
 	}
+	.deliver {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		margin-bottom: 12px;
+	}
+	.opt {
+		text-align: left;
+		background: #fff;
+		border: 1px solid var(--border);
+		border-radius: 14px;
+		padding: 14px 16px;
+		cursor: pointer;
+	}
+	.opt.on {
+		border: 2px solid var(--amber);
+	}
+	.opt-title {
+		font-size: 15px;
+		font-weight: 600;
+		margin-bottom: 2px;
+	}
+	.opt-desc {
+		font-size: 13px;
+		color: var(--muted);
+	}
+	.pass-label {
+		font-size: 13.5px;
+		font-weight: 600;
+	}
+	.deliver-note {
+		font-size: 12.5px;
+		color: var(--muted);
+		line-height: 1.5;
+		margin: 8px 0 0;
+	}
+	.words-box {
+		margin: 12px 0 4px;
+	}
+	.words {
+		font-size: 17px;
+		font-weight: 700;
+		letter-spacing: 0.02em;
+		margin: 6px 0 10px;
+		user-select: all;
+	}
 	.adv-toggle {
 		display: inline-flex;
 		align-items: center;
@@ -581,12 +830,6 @@
 		accent-color: var(--amber);
 		flex: none;
 	}
-	.mt {
-		margin-top: 12px;
-	}
-	.mt-sm {
-		margin-top: 8px;
-	}
 	.mt-btn {
 		margin-top: 6px;
 	}
@@ -635,16 +878,6 @@
 	.qr {
 		flex: none;
 		width: 104px;
-		height: 104px;
-		border-radius: 10px;
-		background: repeating-linear-gradient(45deg, #ede6d6 0 8px, #f7f2e7 8px 16px);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		font-family: var(--font-mono);
-		font-size: 11px;
-		color: #9a8e71;
-		text-align: center;
 	}
 	.pay-addr {
 		flex: 1;
@@ -722,6 +955,11 @@
 		flex-direction: column;
 		gap: 10px;
 	}
+	.claim-qr {
+		max-width: 240px;
+		margin: 18px auto 0;
+		text-align: center;
+	}
 	.more-dl {
 		display: flex;
 		gap: 8px;
@@ -749,5 +987,26 @@
 		background: none;
 		border: none;
 		padding: 0;
+	}
+	.email-card {
+		padding: 18px;
+		margin: 0 0 16px;
+	}
+	.email-card input {
+		margin: 10px 0;
+	}
+	.turnstile-slot {
+		min-height: 65px;
+		margin-bottom: 10px;
+	}
+	.msg-links {
+		display: flex;
+		gap: 8px;
+		justify-content: center;
+		font-size: 13.5px;
+		font-weight: 600;
+	}
+	.success-check.small {
+		font-size: 28px;
 	}
 </style>

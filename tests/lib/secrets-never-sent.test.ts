@@ -5,10 +5,11 @@ import { getUtxos, recommendedFeeRate, broadcastTx } from '../../src/lib/esplora
 import { NET, fixture, utxo, stubFetch } from './helpers';
 
 /**
- * SPEC §14.3.3: the claim secret must never appear in outbound request URLs or
- * bodies. Drives the real esplora client (UTXO lookup, fee estimate, broadcast)
+ * SPEC §14.3.3 (claim flow): the claim secret must never appear in outbound request URLs or
+ * bodies in the claim flow. Drives the real esplora client (UTXO lookup, fee estimate, broadcast)
  * against a stubbed fetch that records every request, then scans the log for
- * every piece of secret material a gift carries.
+ * every piece of secret material a gift carries. The send flow's `/api/send` relay is the §5.1
+ * carve-out and is tested in `tests/worker/send.test.ts`.
  */
 describe('secrets never sent (SPEC §14.3.3)', () => {
 	afterEach(() => vi.unstubAllGlobals());

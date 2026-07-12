@@ -1,10 +1,10 @@
 # Gift Bitcoin — Product & Protocol Specification
 
 **Public brand / domain:** **[giftbitcoin.app](https://giftbitcoin.app)** ([docs/BRAND.md](./docs/BRAND.md))  
-**Status:** Draft v0.2.6 (brand locked: giftbitcoin.app)  
+**Status:** Draft v0.3.0 (brand locked: giftbitcoin.app)  
 **Network (v1):** Bitcoin **testnet4** (see §14.0)  
 **Last updated:** 2026-07-12  
-**Changelog:** v0.2–v0.2.4 — see git history. **v0.2.5** — public name **Gift Bitcoin**, domain **giftbitcoin.app**. Crypto protocol labels (`BTCGiftcard/v1/…`, `btcgiftcard/v1/…`) remain frozen for address compatibility. **v0.2.6** — explicit **v1.1 milestone** (§14.4): offline-claim kit (§5.5 items 2–3), refund/expiry signing + `donate_project`/`custom` policy wiring (§14.1), indexer-override UI (§10.4) moved out of v1 core; success criteria §14.3.2/.5/.8 re-anchored to v1.1. No package or script changes.
+**Changelog:** v0.2–v0.2.4 — see git history. **v0.2.5** — public name **Gift Bitcoin**, domain **giftbitcoin.app**. Crypto protocol labels (`BTCGiftcard/v1/…`, `btcgiftcard/v1/…`) remain frozen for address compatibility. **v0.2.6** — explicit **v1.1 milestone** (§14.4): offline-claim kit (§5.5 items 2–3), refund/expiry signing + `donate_project`/`custom` policy wiring (§14.1), indexer-override UI (§10.4) moved out of v1 core; success criteria §14.3.2/.5/.8 re-anchored to v1.1. No package or script changes. **v0.3.0** — send mechanism: transient email relay carve-outs (§5.1/§10.1/§13/§14.3.3), generated-only passphrases (§4.2.4), three-segment QR fragment (§5.4), Turnstile CSP entry (§13), per docs/superpowers/specs/2026-07-12-send-mechanism-design.md.
 
 This document is the source of truth for design. Implementation must not contradict it without an explicit spec change.
 
@@ -36,9 +36,12 @@ A simple, beautiful website where anyone can create a **Bitcoin e-giftcard**: fu
 |----------|-----------|
 | Custodial balances / “account credit” | Reintroduces operator spend and legal surface |
 | Website process can freeze, reverse, or reissue gifts | Centralization; trust surface |
-| Server-held claim secrets | Breaks “legal doesn’t matter by design” |
+| Server-held claim secrets (“held” = persisted; transient §5.1 relay excluded) | Breaks “legal doesn’t matter by design” |
 | 0-conf claimable gifts | Fraud (RBF / double-spend) |
 | Email/SMS recovery of lost links | Custody-adjacent; not possible without secrets |
+| Scheduled email delivery / resend | Requires persistent server state (send-and-forget only) |
+| One-time-view link retrieval | Email prefetch bots burn the view — net-negative for money |
+| Telegram / X / Messenger share integrations | Each leaks the link to the platform (server-side storage, t.co wrapping, Meta crawlers) |
 | Mainnet | v1 is testnet4 only |
 | Native LN vault (gift as LN channel balance on our node) | Custody; always-online requirements |
 | KYC / user accounts | Conflicts with privacy and keyless design |
@@ -61,6 +64,7 @@ Roles are split deliberately. **“Website process”** = servers, static hostin
 | Holder of custom `R` (`custom`) | No | **Yes, after CSV matures** |
 | Project cold key (`donate_project`) | No | **Yes, after CSV matures** (that policy only) |
 | **Website process** | **Never** | **Never** (no claim keys; no refund keys; no donate hot keys) |
+| **Email-relay link holders** (email delivery only) | The server MAY transiently relay a passphrase-protected `share_card` via `/api/send`; it never persists it and never sees the passphrase. The relay creates additional link holders: **Cloudflare** (one party wearing two hats — the edge sees the POST body, and Email Service delivery logs may retain sent bodies), the **recipient mailbox** (indefinitely), and **corporate mail link-rewriters** (Outlook SafeLinks / Proofpoint wrappers embed the full URL, fragment included). All are mitigated by the forced ≥51.7-bit generated passphrase (~$1.8e8 to crack at current Argon2id params) — that retention is why the passphrase is forced for email. | No (link alone insufficient) |
 
 **Post-`T` race (normative):** After relative locktime matures on a UTXO, **both** claim path and expiry path are valid. **First confirmed spend wins.** There is no exclusive refund window. Product copy must not say “claim expires at T” or “after T only refund works.”
 
@@ -161,6 +165,7 @@ claim_priv = scalarize(Argon2id(
 
 - Package `claim.kdf` = `{ "name": "argon2id", "m": 65536, "t": 3, "p": 1, "out": 32 }`  
 - Passphrase is **never** stored in any package variant.  
+- Passphrases are **always site-generated**: 4 words from the EFF large wordlist (7776 words, 4 × log2(7776) ≈ 51.7 bits), CSPRNG with rejection sampling, lowercase, single-space separated, NFC-normalized. Human-chosen passphrases are removed from the product (2026-07-12 decision; crack economics in the send-mechanism design doc). Claim input is case-insensitive and whitespace-collapsed before NFC; on commitment mismatch the client retries once with the raw NFC-only input so pre-existing human-passphrase gifts stay claimable.
 - **Terminology:** “passphrase required” — not “passphrase-wrapped.” The claim secret still appears in the URL fragment; the passphrase is a second factor (KDF gate), not encryption that removes secret material from the link.
 
 #### 4.2.5 Claim public key `C`
@@ -228,7 +233,7 @@ The gift package is the **canonical recoverable artifact**. The claim URL is a c
 
 - Versioned, portable, printable  
 - Sufficient to claim **or** refund **without the website** when the correct variant is used  
-- Claim secret **must not** be sent to the website process  
+- Claim secret **must not** be sent to the website process — with one carve-out: a **passphrase-committed** `share_card` (i.e. `claim.passphrase_required: true`) MAY be transiently relayed via `POST /api/send` for email delivery. It is never persisted and never logged; the passphrase (the second factor the address commits to) is never sent to any server.  
 - Prefer QR + text + JSON download  
 
 ### 5.2 Common fields (all variants)
@@ -311,6 +316,7 @@ https://<host>/c#<payload>
 | Form | Meaning |
 |------|---------|
 | `g1.<share_card_b64url>` | Full gift link: base64url (unpadded) of the `share_card` JSON (§5.3). Self-sufficient — card display fields, `script` public fields, and claim secret. **The v1 product emits and accepts only this form.** |
+| `g1.<share_card_b64url>.<passphrase_b64url>` | Optional third dot-separated segment: base64url of the UTF-8 NFC passphrase. Emitted **only** by the QR rendering for self-sent passphrase-opt-in gifts (single-scan in-person handoff, client-side scan only — never emailed, never in copy/share links). Dots don't occur in base64url so parsing stays unambiguous; two-segment links are unchanged. Parsers (`/c`, `/recover`, create self-check) accept and ignore/consume the third segment; `/api/send` rejects it outright. On a failed derive from the embedded passphrase the claim page falls back to the manual prompt. |
 | `v1.<secret_b64url>` | **Reserved.** No passphrase; secret is IKM for HKDF claim path |
 | `v1.p.<secret_b64url>` | **Reserved.** Passphrase required; secret is Argon2 **salt** |
 
@@ -325,7 +331,7 @@ https://<host>/c#<payload>
 - Minimal fragment carries **only** secret + passphrase flag — reserved for a future build with a companion watch template or chain discovery; offline-capable share **must** use full `share_card` package (§5.3).  
 - v1 product: the share artifact is the **full `g1.` link / share_card** (file + QR of JSON or of claim URL **plus** download of share_card). Short links are not emitted or accepted in v1.
 
-**Recommended v1 share UX:** one QR = `share_card` JSON (or of the `g1.` claim URL, which is self-sufficient); human also gets the `g1.` link as text.
+**Recommended v1 share UX (send mechanism, 2026-07-12):** Primary = Web Share API (`navigator.share({url})`, shown when `navigator.canShare?.({url}) ?? !!navigator.share`) — covers AirDrop/iMessage/WhatsApp/Signal/anything installed, fragment survives into the OS share sheet, zero server involvement. Fallback = copy-link button (mandatory: Firefox desktop and desktop-Linux Chromium lack Web Share). Optional dedicated buttons: WhatsApp `https://wa.me/?text=<urlencoded link>` and Messages `sms:?&body=<urlencoded link>` (iOS-compatible ampersand form) — the only safe per-messenger prefill links. Explicitly not offered: Telegram, X, Messenger (each leaks the link to the platform), Nostr (niche). One QR = the `g1.` claim URL (three-segment variant for self-sent opt-in gifts only); human also gets the `g1.` link as text. Tier 2 = `/api/send` email relay (§10.1).
 
 **HTTP headers (claim app):**
 
@@ -419,7 +425,7 @@ RBF: unconfirmed replaceable funding stays non-claimable.
 3. **Tip (default 3%, editable):** pre-fill project tip at **3%** of gift amount. Sender may edit % or absolute sats, or set **0**. Tip is never part of the gift vault (§8.1).  
 4. Optional memo (local/package only).  
 5. Choose expiry: `T` preset + policy (`refund_self` / `donate_project` / `custom`).  
-6. Optional “Require passphrase” (recommended if sharing via email/chat).  
+6. **Delivery choice** — “How will you deliver it?”: *I'll share it myself* (optional generated-passphrase toggle) or *Email it for them* (passphrase forced, generated immediately; `refund_self` default). A gift created without a passphrase can never use email delivery (the address commitment is immutable once funded); the reverse is fine. The 4 generated words are shown at create and re-shown at share; they are never stored in any package.  
 7. Client generates secrets, computes descriptor/address; show QR + gift address + amount **and** separate tip payment if tip > 0.  
 8. **Funding method** (§7.1.1): already have BTC **or** buy BTC (on-ramp / guided exchange) **or** LN→chain when enabled.  
 9. Sender completes funding; if tip > 0, pay tip to project address (extra output **or** separate payment — §8.1).  
@@ -618,6 +624,7 @@ Must not strand funds with website process. Typical pattern: client spends claim
 |-----------|------|
 | Static web app (create + claim) | Client-side crypto, UX |
 | Optional lightweight API | Rate-limit public proxy to Esplora; **no secrets** |
+| `/api/send` email relay (Cloudflare Worker) | Send-and-forget relay of a passphrase-committed `share_card` link to a recipient email. Transient only: no DB, no resend, no log line containing the link; ephemeral rate-limit counters + 60 s funding-check cache are the only state. Requires Turnstile + funded-address check (recomputed server-side). |
 | Public chain indexers | Balance, UTXO, broadcast |
 | CDN / host | Static assets only |
 | Project cold key (offline) | `donate_project` expiry spends only; never in web host env |
@@ -714,7 +721,7 @@ Pin in release config (update if infrastructure moves):
 
 ### 12.1 Copy requirements
 
-- Explain passphrase as second factor when sharing via email/chat  
+- Delivery choice explains the generated 4 words as a second factor sent over a different channel ("Now text or tell them these 4 words — the email alone can't claim the gift"); email confirmation says handed to the mail system, never "delivered"  
 - Explain expiry policy + post-`T` race in plain language at create  
 - Claim: “Where should we send it?” + fee + net + address double-check  
 - Custodial destinations: “After it arrives, that company’s rules apply”  
@@ -729,12 +736,12 @@ Pin in release config (update if infrastructure moves):
 |-------------|--------|
 | CSPRNG | `crypto.getRandomValues` or OS CSPRNG offline |
 | No secret in query | Enforced in URL builder tests |
-| No secret to API | Fragment never appended to fetch URLs |
+| No secret to API (claim flow) | Fragment never appended to fetch URLs in the claim flow. The send flow's §5.1 carve-out applies to /api/send only. |
 | Network check | Refuse non-testnet4 addresses on v1 build |
 | Dependency hygiene | Pin versions; minimal crypto libs |
 | Reproducible builds | Document how to verify static assets |
 | SRI | On any third-party scripts (prefer zero) |
-| CSP | `default-src 'self'`; `connect-src` indexer allowlist |
+| CSP | `default-src 'self'`; `connect-src` indexer allowlist; `script-src`/`frame-src` additionally allow `https://challenges.cloudflare.com` (Turnstile on the send form — site-wide because SvelteKit CSP is one config) |
 | Passphrase | Never stored; never transmitted |
 | Golden vectors | NUMS, sample claim_secret→address, descriptor |
 
@@ -783,7 +790,7 @@ Numbering is frozen (code and tests cite §14.3.n). Criteria marked **(v1.1)** a
 
 1. Create → fund (testnet4 or regtest) → claim on-chain works end-to-end with site.  
 2. **(v1.1)** Same gift claimable via **share_card + offline claim HTML** with project origin blocked.  
-3. Automated test: claim secret never appears in simulated server request URLs/bodies.  
+3. Automated test: claim secret never appears in simulated server request URLs/bodies **in the claim flow** (the send flow relays the share_card under the §5.1 carve-out and is excluded).  
 4. Unconfirmed-only gift cannot be marked claimable.  
 5. **(v1.1)** After `T` (short `T` on regtest), refund path recovers to sender when claim did not win the race.  
 6. Network validation rejects mainnet addresses.  

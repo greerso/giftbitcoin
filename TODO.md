@@ -46,8 +46,8 @@ Source of truth for backlog items.
 - [x] **B1c** — Coolify app on Thinkstation (uuid `jdhe9b54fe70iddhxr351sml`, running:healthy)
 - [x] **B1d** — Interim HTTPS: https://giftbitcoin.greerso.com
 - [x] **B1e** — CF Tunnel hostnames `giftbitcoin.app` + `www` → `http://localhost:80` (magnolia-thinkstation)
-- [ ] **B1b** — Cloudflare DNS CNAMEs `@`/`www` → `45ab2a45-9512-46f8-bae4-0c882e02df73.cfargotunnel.com` (proxied; dashboard — API token lacks DNS write on this zone)
-- [ ] **B2** — Production claim URL base `https://giftbitcoin.app/c#…` in package templates (after DNS)
+- [x] **B1b** — DNS CNAMEs `@`/`www` → tunnel (proxied) exist; **redirect loop fixed 2026-07-12** by switching the tunnel ingress from `http://localhost:80` → `https://localhost:443` + `originServerName` (strict TLS, mirrors magnolia). `giftbitcoin.app` + `www` now live (200). See [docs/DEPLOY.md](./docs/DEPLOY.md).
+- [x] **B2** — Claim links use `window.location.origin`, so on `giftbitcoin.app` they are `https://giftbitcoin.app/c#…` automatically.
 - [ ] **B3** — Optional: email link previews / OG (no secrets in unfurls)
 - [ ] **B5** — Auto-deploy webhook main → Coolify (optional)
 

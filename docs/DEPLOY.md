@@ -1,6 +1,6 @@
 # Deploy — giftbitcoin.app on Coolify + Cloudflare Tunnel
 
-## Status (2026-07-11)
+## Status (2026-07-12 — giftbitcoin.app is LIVE)
 
 | Item | Value |
 |------|--------|
@@ -22,41 +22,47 @@ Public hostnames on the Coolify tunnel → Traefik on the host:
 
 | Hostname | Origin |
 |----------|--------|
-| `giftbitcoin.app` | `http://localhost:80` |
-| `www.giftbitcoin.app` | `http://localhost:80` |
+| `giftbitcoin.app` | `https://localhost:443` + `originServerName: giftbitcoin.app` |
+| `www.giftbitcoin.app` | `https://localhost:443` + `originServerName: www.giftbitcoin.app` |
 
-Same pattern as other Coolify apps (Host header → Traefik → container).
+Same pattern as every working `*.magnolia.photos` hostname: the tunnel speaks **HTTPS** to Traefik so it terminates TLS and serves the app directly. ⚠️ Do **not** use `http://localhost:80` — Traefik's `redirect-to-https` middleware then 302-loops every request through Cloudflare (this was the original bug; fixed 2026-07-12).
 
 ### Live URLs
 
 | URL | Notes |
 |-----|--------|
 | https://giftbitcoin.greerso.com | Works (direct / LE on greerso DNS) |
-| https://giftbitcoin.app | **Needs DNS CNAME → tunnel** (see below) |
-| https://www.giftbitcoin.app | Same |
+| https://giftbitcoin.app | **Live** ✅ (proxied CNAME → tunnel, strict-TLS ingress) |
+| https://www.giftbitcoin.app | **Live** ✅ |
 
 ---
 
-## DNS (Cloudflare) — required for giftbitcoin.app
+## DNS (Cloudflare) — done ✅
 
-API token used here **cannot write DNS** on the `giftbitcoin.app` zone (auth error), even though tunnel config API works. Add records in the [Cloudflare Dashboard](https://dash.cloudflare.com) → **giftbitcoin.app** → **DNS**:
+Both records exist as **proxied CNAMEs** → the tunnel (`@` and `www` → `45ab2a45-9512-46f8-bae4-0c882e02df73.cfargotunnel.com`). A public A record to the home IP is **not** used — traffic goes through the Coolify Cloudflare Tunnel.
 
-| Type | Name | Content | Proxy |
-|------|------|---------|--------|
-| **CNAME** | `@` | `45ab2a45-9512-46f8-bae4-0c882e02df73.cfargotunnel.com` | **Proxied** (orange) |
-| **CNAME** | `www` | `45ab2a45-9512-46f8-bae4-0c882e02df73.cfargotunnel.com` | **Proxied** (orange) |
+Note on credentials: the DNS-API token cannot write the `giftbitcoin.app` zone (dashboard only for DNS records), but the token at `~/.cloudflare/token` **can** read+write the tunnel *configuration* (used for the ingress fix below). Zone SSL/TLS mode settings are not readable with it.
 
-Do **not** use a public A record to the home IP for this setup — traffic should go through the Coolify **Cloudflare Tunnel** service.
+## The redirect-loop fix (2026-07-12)
 
-After DNS propagates:
+`giftbitcoin.app` initially 302-looped to itself because the tunnel ingress routed to `http://localhost:80` and Traefik's `redirect-to-https` bounced every request through Cloudflare. Fixed by changing the two ingress rules to `https://localhost:443` + `originServerName` (see the ingress table above), mirroring the working `*.magnolia.photos` hostnames. Applied via:
 
 ```bash
-dig +short giftbitcoin.app CNAME   # expect …cfargotunnel.com or CF flats
-curl -sI https://giftbitcoin.app
-coolify deploy uuid jdhe9b54fe70iddhxr351sml   # if cert/router needs refresh
+# GET current, edit only the two giftbitcoin rules, PUT the WHOLE config back
+curl -X PUT "https://api.cloudflare.com/client/v4/accounts/be2bd16875fa34522156e6ac19582579/cfd_tunnel/45ab2a45-9512-46f8-bae4-0c882e02df73/configurations" \
+  -H "Authorization: Bearer $(cat ~/.cloudflare/token)" -H "Content-Type: application/json" --data @<config.json>
 ```
 
-SSL: Cloudflare edge terminates HTTPS; origin is HTTP to Traefik on the tunnel host. Coolify may still issue a LE cert for Traefik; tunnel uses Host-based routing either way.
+⚠️ A PUT **replaces the entire tunnel config** — always preserve every other ingress rule + the `http_status:404` catch-all.
+
+Verify:
+
+```bash
+curl -sI https://giftbitcoin.app          # HTTP/2 200, no redirect loop
+curl -sI https://www.giftbitcoin.app      # 200
+```
+
+SSL: Cloudflare edge terminates HTTPS to the client; the tunnel then speaks HTTPS to Traefik (strict verify — Traefik's LE cert for `giftbitcoin.app` issued once the domain reached it). Host-based routing throughout.
 
 ---
 

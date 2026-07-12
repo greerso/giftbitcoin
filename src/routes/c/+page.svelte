@@ -7,6 +7,8 @@
 		parseShareCardFragment,
 		isGiftFragment,
 		verifyShareCard,
+		verifyShareCardPassphrase,
+		fragmentPassphrase,
 		CORRUPT_LINK_MSG
 	} from '$lib/gift-package';
 	import {
@@ -53,6 +55,11 @@
 	let address = $state('');
 	let addrError = $state('');
 	let passphrase = $state('');
+	// Third fragment segment (QR-only self-sent gifts, SPEC §5.4): when present,
+	// prepareClaim tries it before ever showing the manual prompt.
+	let embeddedPass = $state<string | null>(null);
+	let embeddedFailed = $state(false);
+	let passFails = $state(0);
 
 	let preparing = $state(false);
 	let prepError = $state('');
@@ -137,6 +144,11 @@
 	// same broken link never gets two different explanations.
 	function openFragment(frag: string, notGiftMsg = '') {
 		if (loadFromFragment(frag)) {
+			try {
+				embeddedPass = fragmentPassphrase(frag) ?? null;
+			} catch {
+				embeddedPass = null; // damaged third segment → fall back to manual prompt
+			}
 			screen = 'r0';
 			checkChain();
 			return;
@@ -245,20 +257,13 @@
 				'That doesn’t look like a bitcoin address. In test mode it usually starts with “tb1” and has no spaces.';
 			return;
 		}
-		if (g?.passphraseRequired && !passphrase) {
-			addrError = 'This gift needs its passphrase — enter it above to continue.';
+		if (g?.passphraseRequired && !passphrase && !(embeddedPass && !embeddedFailed)) {
+			addrError = 'This gift needs its 4 secret words — enter them above to continue.';
 			return;
 		}
 		addrError = '';
 		screen = 'r3';
 		await prepareClaim();
-	}
-
-	async function deriveClaimPriv(): Promise<Uint8Array> {
-		if (!g) throw new Error('no gift');
-		return g.passphraseRequired
-			? await claimPrivFromPassphrase(g.secret, passphrase)
-			: claimPrivFromSecret(g.secret);
 	}
 
 	async function prepareClaim() {
@@ -270,18 +275,44 @@
 		claimPriv = null;
 		amountsChanged = false;
 		try {
-			const priv = await deriveClaimPriv();
+			let priv: Uint8Array;
+			if (g.passphraseRequired) {
+				const usingEmbedded = !!embeddedPass && !embeddedFailed;
+				const input = usingEmbedded ? embeddedPass! : passphrase;
+				const check = await verifyShareCardPassphrase(g.sc, input);
+				if (gen !== claimGen) return;
+				if (!check.ok) {
+					if (usingEmbedded) {
+						// QR-embedded words don't derive the committed key — fall back to
+						// the manual prompt (SPEC §5.4: never dead-end in a wrong-key error).
+						embeddedFailed = true;
+						screen = 'r2';
+						return;
+					}
+					passFails += 1;
+					prepError =
+						passFails >= 3
+							? "Those words still don't match. Check the words with the sender — the gift can't open without the exact 4."
+							: "Those words don't match this gift. Check them and try again.";
+					return;
+				}
+				passFails = 0;
+				// Double-Argon2id cost: verifyShareCardPassphrase already derived
+				// internally to check integrity, and this re-derives for the priv key.
+				// ponytail: 2× Argon2id per successful prepare; plumb the priv out of
+				// verify if it ever hurts.
+				priv = await claimPrivFromPassphrase(g.secret, check.passphrase);
+			} else {
+				const check = await verifyShareCard(g.sc);
+				if (gen !== claimGen) return;
+				if (!check.ok) {
+					prepError = 'This gift link looks corrupted (' + check.errors[0] + ').';
+					return;
+				}
+				priv = claimPrivFromSecret(g.secret);
+			}
 			if (gen !== claimGen) return;
 			const C = xOnlyFromPriv(priv);
-			// Integrity: the link as received must re-derive to the funded script (SPEC §5.3).
-			const check = await verifyShareCard(g.sc, passphrase);
-			if (gen !== claimGen) return;
-			if (!check.ok) {
-				prepError = g.passphraseRequired
-					? 'That passphrase doesn’t match this gift. Check it and try again.'
-					: 'This gift link looks corrupted (' + check.errors[0] + ').';
-				return;
-			}
 			const utxos = await getUtxos(g.address);
 			if (gen !== claimGen) return;
 			if (confirmedValue(utxos) <= 0) {
@@ -464,9 +495,14 @@
 			</div>
 		{/each}
 	</div>
-	{#if g?.passphraseRequired}
-		<div class="label-caps">Gift passphrase</div>
-		<input bind:value={passphrase} type="password" placeholder="The passphrase the sender shared" class="mb" />
+	{#if g?.passphraseRequired && (!embeddedPass || embeddedFailed)}
+		<div class="label-caps">The 4 secret words</div>
+		{#if embeddedFailed}
+			<p class="err">
+				The scanned code's built-in words didn't match this gift — enter the 4 words from the sender.
+			</p>
+		{/if}
+		<input bind:value={passphrase} placeholder="Enter the 4 secret words from the sender." class="mb" />
 	{/if}
 	<div class="label-caps">Paste your bitcoin address</div>
 	<textarea bind:value={address} placeholder="tb1q…" rows="3" class="mono"></textarea>

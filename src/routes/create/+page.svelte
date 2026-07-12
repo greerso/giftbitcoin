@@ -5,6 +5,7 @@
 	import { createGift, type CreatedGift } from '$lib/crypto/create-gift';
 	import {
 		buildPackages,
+		claimLinkWithPassphrase,
 		fullClaimLink,
 		parseShareCardFragment,
 		verifyShareCard,
@@ -16,6 +17,7 @@
 	import { T_PRESETS, MIN_GIFT_SATS } from '$config/network';
 	import { CARD_DESIGNS } from '$lib/giftcards';
 	import GiftCard from '$lib/components/GiftCard.svelte';
+	import Qr from '$lib/components/Qr.svelte';
 	import { generatePassphrase } from '$lib/crypto/passphrase';
 
 	type Step = 'c1' | 'c3' | 'c4';
@@ -215,6 +217,14 @@
 
 	const shareLink = $derived(
 		packages ? fullClaimLink(packages.share_card, window.location.origin) : ''
+	);
+
+	// Three-segment QR ONLY for self-sent passphrase-opt-in gifts (SPEC §5.4);
+	// email-delivery gifts and all copy/share paths stay two-segment.
+	const qrLink = $derived(
+		packages && delivery === 'self' && passOptIn && words
+			? claimLinkWithPassphrase(packages.share_card, window.location.origin, words)
+			: shareLink
 	);
 
 	async function copyLink() {
@@ -431,7 +441,9 @@
 	</div>
 
 	<div class="pay-card">
-		<div class="qr" aria-hidden="true">address<br />below</div>
+		<div class="qr">
+			<Qr data={`bitcoin:${gift.payment.address}`} label="Gift address QR" />
+		</div>
 		<div class="pay-addr">
 			<div class="mono addr">{gift.payment.address}</div>
 			<button class="btn-copy" onclick={copyAddr}>{copiedAddr ? 'Copied ✓' : 'Copy address'}</button>
@@ -501,6 +513,17 @@
 	{#if linkCopyFailed}
 		<div class="copy-fallback mono">{shareLink}</div>
 	{/if}
+	<div class="claim-qr">
+		<Qr data={qrLink} label="Gift link QR" />
+		<p class="deliver-note">
+			{#if qrLink !== shareLink}
+				This QR includes the secret words for a single-scan in-person handoff — show it only to the
+				recipient. The copy/share link never includes them.
+			{:else}
+				Scanning opens the gift link directly.
+			{/if}
+		</p>
+	</div>
 	<div class="more-dl">
 		<button onclick={() => download('giftbitcoin-share-card.json', packages!.share_card)}>Share card file</button>
 		<span>·</span>
@@ -750,16 +773,6 @@
 	.qr {
 		flex: none;
 		width: 104px;
-		height: 104px;
-		border-radius: 10px;
-		background: repeating-linear-gradient(45deg, #ede6d6 0 8px, #f7f2e7 8px 16px);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		font-family: var(--font-mono);
-		font-size: 11px;
-		color: #9a8e71;
-		text-align: center;
 	}
 	.pay-addr {
 		flex: 1;
@@ -836,6 +849,11 @@
 		display: flex;
 		flex-direction: column;
 		gap: 10px;
+	}
+	.claim-qr {
+		max-width: 240px;
+		margin: 18px auto 0;
+		text-align: center;
 	}
 	.more-dl {
 		display: flex;

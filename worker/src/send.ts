@@ -17,6 +17,7 @@ export interface ValidSend {
 	fromName: string;
 	message: string;
 	address: string;
+	turnstileToken: string;
 }
 export type SendError = { error: string; status: number };
 
@@ -29,7 +30,8 @@ export function validateSend(body: unknown, env: SendEnv): ValidSend | SendError
 	const link = typeof b.link === 'string' ? b.link : '';
 	const fromName = typeof b.from_name === 'string' ? b.from_name.trim() : '';
 	const message = typeof b.message === 'string' ? b.message.trim() : '';
-	if (typeof b.turnstile_token !== 'string' || !b.turnstile_token) return bad('turnstile_required');
+	const turnstileToken = typeof b.turnstile_token === 'string' ? b.turnstile_token : '';
+	if (!turnstileToken) return bad('turnstile_required');
 	if (!EMAIL_RE.test(to) || to.length > 254) return bad('bad_email');
 	if (fromName.length > 64 || /[\r\n]/.test(fromName)) return bad('bad_from_name');
 	if (message.length > 280) return bad('bad_message');
@@ -66,7 +68,7 @@ export function validateSend(body: unknown, env: SendEnv): ValidSend | SendError
 		});
 		if (payment.address !== script.address) return bad('address_mismatch');
 		if (payment.nums_xonly !== script.nums_xonly) return bad('address_mismatch');
-		return { to, link, fromName, message, address: payment.address };
+		return { to, link, fromName, message, address: payment.address, turnstileToken };
 	} catch {
 		return bad('bad_card');
 	}
@@ -133,13 +135,14 @@ ${note}
 <p style="font-size:14px;color:#6b6355;">The sender will give you <strong>4 secret words</strong> to open it — this email alone can't claim the gift.</p>
 <p style="font-size:12px;color:#9a8e71;">Bitcoin testnet4 — no real value. If the button doesn't work, copy this link:<br>${link}</p>
 </div>`;
-	const text = `${who.replace(/<[^>]*>/g, '')} you a Bitcoin gift.
+	const text = `${who} you a Bitcoin gift.
 ${message ? '\n"' + message + '"\n' : ''}
 Open it: ${link}
 
 The sender will give you 4 secret words to open it — this email alone can't claim the gift.
 (Bitcoin testnet4 — no real value.)`;
-	return { subject: `${fromName ? esc(fromName) + ' sent' : 'Someone sent'} you a Bitcoin gift`, html, text };
+	// Subject is a header value, not HTML — use the raw (CRLF-validated by validateSend) name, not esc().
+	return { subject: `${fromName ? fromName + ' sent' : 'Someone sent'} you a Bitcoin gift`, html, text };
 }
 
 const json = (status: number, body: Record<string, unknown>) =>
@@ -165,7 +168,7 @@ export async function handleSend(request: Request, env: SendEnv): Promise<Respon
 	if (!(await env.ADDR_LIMIT.limit({ key: await sha256Hex(v.address) })).success) {
 		return fail(429, 'rate_limited');
 	}
-	if (!(await verifyTurnstile((body as Record<string, unknown>).turnstile_token as string, ip, env.TURNSTILE_SECRET))) {
+	if (!(await verifyTurnstile(v.turnstileToken, ip, env.TURNSTILE_SECRET))) {
 		return fail(403, 'turnstile_failed');
 	}
 	// Funding check LAST among gates: fails closed on esplora trouble.

@@ -397,7 +397,8 @@
 		<input bind:value={toName} placeholder="To (their name)" />
 		<input bind:value={fromName} placeholder="From (you)" />
 	</div>
-	<textarea bind:value={message} placeholder="Add a short message (optional)" rows="2"></textarea>
+	<!-- 280 cap matches worker's validateSend message limit; also keeps the claim link (with embedded memo) within QR byte capacity -->
+	<textarea bind:value={message} placeholder="Add a short message (optional)" rows="2" maxlength="280"></textarea>
 
 	<div class="label-caps">How will you deliver it?</div>
 	<div class="deliver">

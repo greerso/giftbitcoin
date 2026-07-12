@@ -80,8 +80,13 @@ origin is untouched. One-time setup, in order:
 3. **Deploy:** `npx wrangler deploy -c worker/wrangler.jsonc` — the route
    `giftbitcoin.app/api/send` is in the config. Rate limits + esplora base are vars there.
 4. **Smoke test:** create a passphrase (email-delivery) gift on the live site, fund it,
-   send to an address you control; check the mail arrives and `POST /api/send` with a
-   three-segment link returns 400.
+   and send to an external email address you control but that has **not** been pre-verified
+   or added to the Cloudflare account in any way (not a destination address, not an account
+   login) — this confirms the Worker can deliver to arbitrary recipients, not just addresses
+   Cloudflare already trusts. Check the mail arrives and `POST /api/send` with a
+   three-segment link returns 400. If delivery fails with an "allowed list" or
+   recipient-restriction-shaped error, the `send_email` binding config needs review before
+   this feature can be trusted with real (non-account-holder) recipients.
 
 **Note:** Everything in Tasks 8–10 (Turnstile verify, esplora funding check with Cache API, `unsafe`
 ratelimit bindings, `env.EMAIL.send()`) was tested against Node-stubbed fetch/mocks in vitest, NOT the real

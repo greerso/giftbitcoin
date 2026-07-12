@@ -2,7 +2,7 @@
 	import encodeQR from 'qr';
 
 	let { data, label = '' }: { data: string; label?: string } = $props();
-	// ecc 'low' keeps the module count down for ~1 KB three-segment payloads —
+	// ecc 'low' keeps the module count down for ~1.6-1.9 KB three-segment payloads —
 	// density is the scannability constraint, not damage tolerance, on a screen.
 	const svg = $derived(encodeQR(data, 'svg', { ecc: 'low', border: 2 }));
 </script>

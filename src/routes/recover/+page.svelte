@@ -95,8 +95,9 @@
 {#if showAdv}
 	<p class="adv-note">
 		The gift key is in your link’s fragment (#…), never sent to our servers. Your backup file also
-		contains the refund secret for the expiry path. Any wallet that imports the descriptor and keys
-		can spend the refund path directly once the CSV timelock matures.
+		contains the refund secret for the expiry path. Spending that path needs the refund key derived
+		from the secret (the KDF parameters are in your backup’s refund.kdf field), then a signed spend
+		of the CSV leaf once the timelock matures; a guided refund flow lands in a later build.
 	</p>
 {/if}
 

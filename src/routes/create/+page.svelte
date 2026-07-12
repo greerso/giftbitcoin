@@ -43,7 +43,6 @@
 	let backedUp = $state(false);
 
 	let pollGen = 0;
-	let destroyed = false;
 
 	const PRESETS = ['25', '50', '100', '250'];
 	const usd = $derived(parseFloat(usdAmount) || 0);
@@ -56,6 +55,10 @@
 	const fundedBtcStr = $derived(fmtBtc(satsToBtc(fundedSats)));
 	const fundedUsd = $derived(money(satsToBtc(fundedSats) * price));
 	const underfunded = $derived(fundedSats > 0 && fundedSats < sats);
+	// The one key-loss predicate all three exit guards share (unload, navigation,
+	// regenerate). A fresh page has gift === null, so it stays inert until step c3
+	// has shown an address.
+	const unsavedKeys = $derived(!!gift && !backedUp);
 
 	onMount(async () => {
 		price = await fetchBtcUsd();
@@ -73,13 +76,14 @@
 	});
 
 	// Warn before a real page unload (close/refresh) while an un-backed-up gift exists.
+	// No step condition: the c3 back arrow parks an un-backed-up (possibly funded)
+	// gift on c1, and the guard must hold there too.
 	$effect(() => {
-		const dirty = !!gift && !backedUp && step !== 'c1';
 		const handler = (e: BeforeUnloadEvent) => {
 			e.preventDefault();
 			e.returnValue = '';
 		};
-		if (dirty) window.addEventListener('beforeunload', handler);
+		if (unsavedKeys) window.addEventListener('beforeunload', handler);
 		return () => window.removeEventListener('beforeunload', handler);
 	});
 
@@ -87,7 +91,7 @@
 	// NOT fire beforeunload — guard it too, or losing the page silently discards the
 	// only copy of the keys after the user may already have funded the address.
 	beforeNavigate((navigation) => {
-		if (gift && !backedUp && step !== 'c1') {
+		if (unsavedKeys) {
 			const leave = confirm(
 				"You haven't saved your gift backup yet. If you've already sent funds, leaving now means no one — including us — can recover them. Leave without saving?"
 			);
@@ -100,8 +104,7 @@
 	}
 
 	onDestroy(() => {
-		destroyed = true;
-		cancelPoll();
+		cancelPoll(); // bumps pollGen, which every in-flight poll re-checks
 		clearNav();
 	});
 
@@ -124,6 +127,15 @@
 				giftKey.usePass !== key.usePass ||
 				giftKey.pass !== key.pass
 			) {
+				// Regenerating replaces the address. The in-page back arrow bypasses the
+				// beforeunload/beforeNavigate guards, so an un-backed-up (possibly already
+				// funded) gift needs the same confirmation here.
+				if (unsavedKeys) {
+					const proceed = confirm(
+						"You haven't saved your gift backup yet. Changing these options creates a new gift address — if you've already sent funds to the old one, no one can recover them. Continue?"
+					);
+					if (!proceed) return;
+				}
 				gift = await createGift({
 					T: T_PRESETS[`days${expiryDays}` as 'days90'],
 					policy: 'refund_self',
@@ -189,9 +201,12 @@
 	}
 
 	async function poll(gen: number, addr: string) {
-		if (destroyed || gen !== pollGen) return;
+		if (gen !== pollGen) return;
 		try {
 			const utxos = await getUtxos(addr);
+			// Re-check after the await: cancelPoll() may have run while the fetch was
+			// in flight, and a stale continuation must not flip the step to 'c4'.
+			if (gen !== pollGen) return;
 			pollFails = 0;
 			const confirmed = confirmedValue(utxos);
 			if (confirmed > 0) {
@@ -202,7 +217,7 @@
 		} catch {
 			pollFails += 1;
 		}
-		if (destroyed || gen !== pollGen) return;
+		if (gen !== pollGen) return;
 		setTimeout(() => poll(gen, addr), 12_000);
 	}
 

@@ -1,7 +1,7 @@
 /**
  * SPEC §5.2/§5.3 gift packages + claim link. Builds the three normative export
- * variants (share_card / sender_full_backup / sender_watch_only) and both claim
- * link forms from a CreatedGift.
+ * variants (share_card / sender_full_backup / sender_watch_only) and the g1.
+ * claim link from a CreatedGift.
  */
 import type { CreatedGift } from '$lib/crypto/create-gift';
 import { bytesToB64url, b64urlToBytes } from '$lib/crypto/keys';
@@ -88,8 +88,8 @@ export function buildPackages(gift: CreatedGift, meta: GiftMeta): GiftPackages {
 
 /**
  * Self-sufficient claim link: the whole share_card, so the recipient's page can
- * show the card and locate the funds from the link alone (the SPEC §5.4 "compact
- * payload extension"). Fragment-only — never sent to a server.
+ * show the card and locate the funds from the link alone (the SPEC §5.4 g1.
+ * payload). Fragment-only — never sent to a server.
  */
 export function fullClaimLink(shareCard: Record<string, unknown>, origin: string): string {
 	const json = JSON.stringify(shareCard);

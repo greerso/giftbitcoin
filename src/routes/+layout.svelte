@@ -12,7 +12,7 @@
 </svelte:head>
 
 <div class="app">
-	<div class="strip">Test mode — bitcoin on this site has no real value</div>
+	<div class="strip">Test mode: bitcoin on this site has no real value</div>
 
 	<header>
 		{#if nav.back}
@@ -107,13 +107,13 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 26px;
-		height: 20px;
-		border-radius: 6px;
+		width: 38px;
+		height: 25px;
+		border-radius: 7px;
 		background: var(--amber);
 		color: #fff;
 		font-weight: 700;
-		font-size: 12px;
+		font-size: 14px;
 	}
 	.wordmark {
 		font-family: var(--font-head);

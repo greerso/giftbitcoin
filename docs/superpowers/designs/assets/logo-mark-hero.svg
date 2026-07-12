@@ -1,0 +1,10 @@
+<svg width="92" height="60" viewBox="0 0 40 26" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="gbcard-lg" x1="2" y1="2" x2="36" y2="26" gradientUnits="userSpaceOnUse"><stop stop-color="#E0932F"/><stop offset="1" stop-color="#B15E0B"/></linearGradient>
+    <linearGradient id="gbchip-lg" x1="6" y1="9" x2="13" y2="14" gradientUnits="userSpaceOnUse"><stop stop-color="#F6DE9C"/><stop offset="1" stop-color="#D6A94A"/></linearGradient>
+  </defs>
+  <rect x="1" y="2.5" width="38" height="23" rx="4" fill="url(#gbcard-lg)"/>
+  <rect x="6" y="9" width="7" height="5.4" rx="1.3" fill="url(#gbchip-lg)"/>
+  <path d="M9.5 9 V14.4 M6 11.7 H13" stroke="#B7862E" stroke-width="0.7"/>
+  <g transform="translate(8.4,-3.1)"><path d="M18.4 10.5 V12 M18.4 22.2 V23.7 M15.2 12 H19.6 A2.7 2.7 0 0 1 19.6 17.4 H15.2 M15.2 17.4 H20 A2.7 2.7 0 0 1 20 22.8 H15.2 M15.2 12 V22.8 M15.2 17.4 H19.6" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" fill="none"/></g>
+</svg>

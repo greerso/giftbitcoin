@@ -30,6 +30,8 @@ via `wrangler secret put TURNSTILE_SECRET`.
       inbox, confirm 3-segment POST returns 400.
 - [ ] Manual QA: 3-segment QR density scan on real phone cameras (~1.6–1.9 KB → 137×145
       modules at `ecc:'low'`).
+- [x] Design v2 handoff + fiat/BTC denom toggle + home/claim copy alignment (see
+      `docs/superpowers/designs/`). Logo concepts B/C remain brand archive only (not shipped).
 
 ---
 

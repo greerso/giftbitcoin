@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>a{color:#A85F0D;text-decoration:none}a:hover{color:#8A5A10;text-decoration:underline}</style>
+</helmet>
+<div style="display:flex;flex-direction:column;height:100%;background:#FAF8F4;color:#23272E;font-family:'Instrument Sans',sans-serif;overflow:hidden">
+
+  <!-- Testnet strip -->
+  <div style="flex:none;background:#EFE9DD;color:#7A6E55;font-size:11.5px;font-weight:500;text-align:center;padding:6px 12px;letter-spacing:0.02em">Test mode: bitcoin on this site has no real value</div>
+
+  <!-- Header -->
+  <div style="flex:none;display:flex;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid #EEE7D9;background:#FAF8F4">
+    <sc-if value="{{ isInner }}" hint-placeholder-val="{{ false }}">
+      <button onClick="{{ onBack }}" style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border:1px solid #E3DCCE;border-radius:10px;background:#fff;color:#4B5563;font-size:16px;cursor:pointer" style-hover="background:#F3EEE3">←</button>
+    </sc-if>
+    <div onClick="{{ goHome }}" style="display:flex;align-items:center;gap:9px;cursor:pointer">
+      <svg width="38" height="25" viewBox="0 0 40 26" fill="none" style="display:block">
+        <defs>
+          <linearGradient id="gbcard-sm" x1="2" y1="2" x2="36" y2="26" gradientUnits="userSpaceOnUse"><stop stop-color="#E0932F"></stop><stop offset="1" stop-color="#B15E0B"></stop></linearGradient>
+          <linearGradient id="gbchip-sm" x1="6" y1="9" x2="13" y2="14" gradientUnits="userSpaceOnUse"><stop stop-color="#F6DE9C"></stop><stop offset="1" stop-color="#D6A94A"></stop></linearGradient>
+        </defs>
+        <rect x="1" y="2.5" width="38" height="23" rx="4" fill="url(#gbcard-sm)"></rect>
+        <rect x="6" y="9" width="7" height="5.4" rx="1.3" fill="url(#gbchip-sm)"></rect>
+        <path d="M9.5 9 V14.4 M6 11.7 H13" stroke="#B7862E" stroke-width="0.7"></path>
+        <g transform="translate(8.4,-3.1)"><path d="M18.4 10.5 V12 M18.4 22.2 V23.7 M15.2 12 H19.6 A2.7 2.7 0 0 1 19.6 17.4 H15.2 M15.2 17.4 H20 A2.7 2.7 0 0 1 20 22.8 H15.2 M15.2 12 V22.8 M15.2 17.4 H19.6" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" fill="none"></path></g>
+      </svg>
+      <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:600;font-size:16.5px;letter-spacing:-0.01em">giftbitcoin<span style="color:#B4A98F;font-weight:500">.app</span></div>
+    </div>
+    <div style="flex:1"></div>
+    <sc-if value="{{ isDesktop }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;gap:22px;font-size:14px;font-weight:500;color:#6E7480">
+        <span onClick="{{ goHelp }}" style="cursor:pointer" style-hover="color:#23272E">Help</span>
+        <span onClick="{{ goRecover }}" style="cursor:pointer" style-hover="color:#23272E">Recover a gift</span>
+      </div>
+    </sc-if>
+  </div>
+
+  <!-- Scrollable content -->
+  <div style="flex:1;overflow-y:auto">
+  <div style="max-width:560px;margin:0 auto;padding:28px 20px 48px;width:100%;box-sizing:border-box">
+
+    <sc-if value="{{ stepLabel }}" hint-placeholder-val="{{ false }}">
+      <div style="font-size:12px;font-weight:600;color:#B4A98F;letter-spacing:0.06em;text-transform:uppercase;margin:0 0 14px">{{ stepLabel }}</div>
+    </sc-if>
+
+    <!-- HOME -->
+    <sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+      <div style="padding:16px 0 0">
+        <svg width="92" height="60" viewBox="0 0 40 26" fill="none" style="display:block;margin-bottom:22px;filter:drop-shadow(0 10px 20px rgba(201,114,16,0.28))">
+          <defs>
+            <linearGradient id="gbcard-lg" x1="2" y1="2" x2="36" y2="26" gradientUnits="userSpaceOnUse"><stop stop-color="#E0932F"></stop><stop offset="1" stop-color="#B15E0B"></stop></linearGradient>
+            <linearGradient id="gbchip-lg" x1="6" y1="9" x2="13" y2="14" gradientUnits="userSpaceOnUse"><stop stop-color="#F6DE9C"></stop><stop offset="1" stop-color="#D6A94A"></stop></linearGradient>
+          </defs>
+          <rect x="1" y="2.5" width="38" height="23" rx="4" fill="url(#gbcard-lg)"></rect>
+          <rect x="6" y="9" width="7" height="5.4" rx="1.3" fill="url(#gbchip-lg)"></rect>
+          <path d="M9.5 9 V14.4 M6 11.7 H13" stroke="#B7862E" stroke-width="0.7"></path>
+          <g transform="translate(8.4,-3.1)"><path d="M18.4 10.5 V12 M18.4 22.2 V23.7 M15.2 12 H19.6 A2.7 2.7 0 0 1 19.6 17.4 H15.2 M15.2 17.4 H20 A2.7 2.7 0 0 1 20 22.8 H15.2 M15.2 12 V22.8 M15.2 17.4 H19.6" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" fill="none"></path></g>
+        </svg>
+        <div style="display:inline-flex;align-items:center;background:#F3EBDB;color:#8A5A10;font-size:11.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;border-radius:6px;padding:4px 9px;margin-bottom:14px">E-gift card · real bitcoin</div>
+        <h1 style="font-family:'Bricolage Grotesque',sans-serif;font-size:32px;font-weight:600;line-height:1.15;letter-spacing:-0.02em;margin:0 0 12px">The e-gift card that's real bitcoin.</h1>
+        <p style="font-size:16px;line-height:1.6;color:#6E7480;margin:0 0 26px;text-wrap:pretty">A digital gift card you send by link, with nothing to mail. Pick a design, choose an amount in dollars, and share it. They redeem it to a wallet they control. No accounts, and we never touch the money.</p>
+        <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:34px">
+          <button onClick="{{ goCreate }}" style="width:100%;padding:15px;border:none;border-radius:12px;background:#C97210;color:#fff;font-family:'Instrument Sans',sans-serif;font-weight:600;font-size:16px;cursor:pointer" style-hover="background:#A85F0D">Create a gift card</button>
+          <button onClick="{{ goClaim }}" style="width:100%;padding:14px;border:1.5px solid #D8D0C0;border-radius:12px;background:#fff;color:#23272E;font-family:'Instrument Sans',sans-serif;font-weight:600;font-size:16px;cursor:pointer" style-hover="background:#F6F1E6">Redeem a gift card</button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:14px;border-top:1px solid #EEE7D9;padding-top:22px">
+          <div style="display:flex;gap:12px;align-items:flex-start"><div style="flex:none;width:8px;height:8px;border-radius:50%;background:#C97210;margin-top:6px"></div><div style="font-size:14px;line-height:1.5;color:#4B5563"><strong style="color:#23272E">Non-custodial.</strong> The bitcoin lives at an address only your gift link controls, and we never hold keys.</div></div>
+          <div style="display:flex;gap:12px;align-items:flex-start"><div style="flex:none;width:8px;height:8px;border-radius:50%;background:#C97210;margin-top:6px"></div><div style="font-size:14px;line-height:1.5;color:#4B5563"><strong style="color:#23272E">No account needed.</strong> Not for you, not for them.</div></div>
+          <div style="display:flex;gap:12px;align-items:flex-start"><div style="flex:none;width:8px;height:8px;border-radius:50%;background:#C97210;margin-top:6px"></div><div style="font-size:14px;line-height:1.5;color:#4B5563"><strong style="color:#23272E">Redeem to your own wallet.</strong> We'll help you set one up, or use an exchange like Coinbase if you'd rather.</div></div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- CREATE 1: CARD + AMOUNT + PERSONALIZE (+ Advanced) -->
+    <sc-if value="{{ isC1 }}" hint-placeholder-val="{{ false }}">
+      <h2 style="font-family:'Bricolage Grotesque',sans-serif;font-size:25px;font-weight:600;letter-spacing:-0.015em;margin:0 0 20px">Choose a card</h2>
+
+      <!-- Big card preview -->
+      <div style="{{ cardStyleBig }}">
+        <div style="{{ cardBandStyle }}"></div>
+        <div style="position:relative;display:flex;justify-content:space-between;align-items:flex-start">
+          <div style="font-size:12px;font-weight:600;letter-spacing:0.09em;text-transform:uppercase;opacity:0.85">{{ cardLabel }}</div>
+          <div style="font-weight:700;font-size:18px;opacity:0.95">₿</div>
+        </div>
+        <div style="position:relative;font-family:'Bricolage Grotesque',sans-serif;font-size:36px;font-weight:600;margin:auto 0 2px;padding-top:18px">{{ usdDisplay }}</div>
+        <div style="position:relative;font-size:13px;opacity:0.8">≈ {{ btcStr }} BTC · real bitcoin inside</div>
+        <sc-if value="{{ toName }}" hint-placeholder-val="{{ false }}">
+          <div style="position:relative;font-size:13px;opacity:0.9;margin-top:14px;font-weight:500">For {{ toName }}</div>
+        </sc-if>
+      </div>
+
+      <!-- Design thumbs -->
+      <div style="display:flex;gap:12px;margin:16px 0 26px">
+        <sc-for list="{{ designs }}" as="d" hint-placeholder-count="4">
+          <div onClick="{{ d.pick }}" style="display:flex;flex-direction:column;gap:6px;align-items:center;cursor:pointer">
+            <div style="{{ d.thumbStyle }}"></div>
+            <div style="{{ d.nameStyle }}">{{ d.name }}</div>
+          </div>
+        </sc-for>
+      </div>
+
+      <!-- Amount -->
+      <div style="font-size:13px;font-weight:600;color:#B4A98F;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:10px">Amount</div>
+      <div style="{{ amountFieldStyle }}">
+        <div onClick="{{ toggleDenom }}" title="Flip between local currency and bitcoin" style="flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;width:60px;align-self:stretch;background:#FAF8F4;border-right:1px solid #EAE3D4;cursor:pointer" style-hover="background:#F3EBDB">
+          <div style="{{ denomTopStyle }}">{{ fiatCode }}</div>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style="flex:none;margin:1px 0"><path d="M8 5 V19 M8 5 L5 8 M8 5 L11 8 M16 19 V5 M16 19 L13 16 M16 19 L19 16" stroke="#C97210" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+          <div style="{{ denomBotStyle }}">BTC</div>
+        </div>
+        <div style="flex:1;min-width:0;display:flex;align-items:center;gap:8px;padding:0 16px">
+          <div style="font-size:22px;font-weight:600;color:#B4A98F">{{ amountPrefix }}</div>
+          <input value="{{ amountValue }}" onChange="{{ onAmount }}" inputMode="decimal" placeholder="Enter any amount" style="flex:1;min-width:0;border:none;outline:none;background:transparent;font-family:'Bricolage Grotesque',sans-serif;font-size:26px;font-weight:600;color:#23272E">
+          <div style="font-size:13px;font-weight:600;color:#B4A98F">{{ amountSuffix }}</div>
+        </div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+        <sc-for list="{{ presets }}" as="p" hint-placeholder-count="4">
+          <button onClick="{{ p.pick }}" style="{{ p.style }}">{{ p.label }}</button>
+        </sc-for>
+      </div>
+      <div style="font-size:13.5px;color:#6E7480;margin:0 0 24px">They'll receive real bitcoin, about <strong style="color:#23272E">{{ btcStr }} BTC</strong> {{ amountTail }}</div>
+
+      <!-- Personalize -->
+      <div style="font-size:13px;font-weight:600;color:#B4A98F;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:10px">Who's it for?</div>
+      <div style="display:flex;gap:10px;margin-bottom:10px">
+        <input value="{{ toName }}" onChange="{{ onTo }}" placeholder="To (their name)" style="flex:1;min-width:0;padding:12px 14px;border:1.5px solid #E3DCCE;border-radius:10px;font-family:'Instrument Sans',sans-serif;font-size:15px;outline-color:#C97210;box-sizing:border-box;background:#fff">
+        <input value="{{ fromName }}" onChange="{{ onFrom }}" placeholder="From (you)" style="flex:1;min-width:0;padding:12px 14px;border:1.5px solid #E3DCCE;border-radius:10px;font-family:'Instrument Sans',sans-serif;font-size:15px;outline-color:#C97210;box-sizing:border-box;background:#fff">
+      </div>
+      <textarea value="{{ message }}" onChange="{{ onMessage }}" placeholder="Add a short message (optional)" rows="2" style="width:100%;box-sizing:border-box;padding:12px 14px;border:1.5px solid #E3DCCE;border-radius:10px;font-family:'Instrument Sans',sans-serif;font-size:15px;line-height:1.5;resize:none;outline-color:#C97210;margin-bottom:22px;background:#fff"></textarea>
+
+      <!-- Delivery -->
+      <div style="font-size:13px;font-weight:600;color:#B4A98F;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:10px">How will you deliver it?</div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
+        <div onClick="{{ pickSelf }}" style="{{ deliverSelfStyle }}">
+          <div style="font-size:15px;font-weight:600;margin-bottom:2px">I'll share it myself</div>
+          <div style="font-size:13px;color:#6E7480;line-height:1.45">Copy the link or QR code and send it any way you like.</div>
+        </div>
+        <div onClick="{{ pickEmail }}" style="{{ deliverEmailStyle }}">
+          <div style="font-size:15px;font-weight:600;margin-bottom:2px">Email it for them</div>
+          <div style="font-size:13px;color:#6E7480;line-height:1.45">We email the link, and you send the 4 secret words separately.</div>
+        </div>
+      </div>
+
+      <sc-if value="{{ isSelfDelivery }}" hint-placeholder-val="{{ true }}">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:8px">
+          <input type="checkbox" checked="{{ passOptIn }}" onChange="{{ togglePassOptIn }}" style="width:18px;height:18px;accent-color:#C97210;flex:none">
+          <span style="font-size:13.5px;font-weight:600">Add 4 secret words as a second lock (recommended if sharing over chat)</span>
+        </label>
+        <sc-if value="{{ showSelfNoPassNote }}" hint-placeholder-val="{{ true }}">
+          <div style="font-size:12.5px;color:#6E7480;line-height:1.5;margin-bottom:6px">Without the secret words, this gift can never be emailed for you later, and that choice is locked in when you fund it.</div>
+        </sc-if>
+      </sc-if>
+      <sc-if value="{{ isEmailDelivery }}" hint-placeholder-val="{{ false }}">
+        <div style="font-size:12.5px;color:#6E7480;line-height:1.5;margin-bottom:6px">Email delivery locks in the 4 secret words below, and the email alone can't claim the gift. If the email is lost, you can still share the link yourself, and you can reclaim the bitcoin after expiry.</div>
+      </sc-if>
+
+      <sc-if value="{{ passActive }}" hint-placeholder-val="{{ false }}">
+        <div style="background:#F9EFE1;border:1px solid #EBD9BC;border-radius:12px;padding:14px 16px;margin:6px 0 18px">
+          <div style="font-size:12px;font-weight:600;color:#8A5A10;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:8px">The 4 secret words</div>
+          <div style="font-family:ui-monospace,Menlo,monospace;font-size:17px;font-weight:700;letter-spacing:0.02em;color:#23272E;margin-bottom:10px;user-select:all">{{ words }}</div>
+          <button onClick="{{ copyWords }}" style="padding:8px 14px;border:1.5px solid #D8D0C0;border-radius:9px;background:#fff;font-family:'Instrument Sans',sans-serif;font-weight:600;font-size:13px;color:#23272E;cursor:pointer" style-hover="background:#fff">{{ copyWordsLabel }}</button>
+          <div style="font-size:12.5px;color:#8A5A10;margin-top:10px;line-height:1.5">Write these down. You'll give them to the recipient separately (text or tell them). They're never stored in your backup: lose them and the gift can't be redeemed, though you can reclaim after expiry.</div>
+        </div>
+      </sc-if>
+
+      <!-- Advanced -->
+      <div onClick="{{ toggleAdvCreate }}" style="display:inline-flex;align-items:center;gap:6px;font-size:13.5px;font-weight:600;color:#A85F0D;cursor:pointer;margin-bottom:14px">Advanced options {{ advCreateChevron }}</div>
+      <sc-if value="{{ advCreateOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
+
+          <div style="background:#fff;border:1px solid #EAE3D4;border-radius:12px;padding:14px 16px">
+            <div style="font-size:14px;font-weight:600;margin-bottom:2px">Project tip <span style="font-weight:400;color:#B4A98F">suggested</span></div>
+            <div style="font-size:13px;line-height:1.5;color:#6E7480;margin-bottom:10px">Currently {{ tipPct }}% ({{ tipUsdStr }}), recorded in your backup for the open-source project. Optional and separate from the gift.</div>
+            <div style="display:flex;gap:8px">
+              <sc-for list="{{ tips }}" as="t" hint-placeholder-count="4">
+                <button onClick="{{ t.pick }}" style="{{ t.style }}">{{ t.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="background:#fff;border:1px solid #EAE3D4;border-radius:12px;padding:14px 16px">
+            <div style="font-size:14px;font-weight:600;margin-bottom:2px">Expiry</div>
+            <div style="font-size:13px;line-height:1.5;color:#6E7480;margin-bottom:10px">If it isn't redeemed, you can reclaim your bitcoin after this long.</div>
+            <div style="display:flex;gap:8px">
+              <sc-for list="{{ expiries }}" as="x" hint-placeholder-count="3">
+                <button onClick="{{ x.pick }}" style="{{ x.style }}">{{ x.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+
+        </div>
+      </sc-if>
+
+      <button onClick="{{ goC3 }}" disabled="{{ amountInvalid }}" style="{{ primaryBtnStyle }}">Continue to payment</button>
+    </sc-if>
+
+    <!-- CREATE 3: PAY -->
+    <sc-if value="{{ isC3 }}" hint-placeholder-val="{{ false }}">
+      <h2 style="font-family:'Bricolage Grotesque',sans-serif;font-size:25px;font-weight:600;letter-spacing:-0.015em;margin:0 0 8px">Pay for your gift card</h2>
+      <p style="font-size:15px;line-height:1.55;color:#6E7480;margin:0 0 18px">Send at least <strong style="color:#23272E">{{ totalBtcStr }} BTC</strong> ({{ totalUsdStr }}) to this address. Testnet coins, no real value.</p>
+
+      <div style="background:#F9EFE1;border:1px solid #EBD9BC;border-radius:12px;padding:14px 16px;margin-bottom:16px">
+        <div style="font-size:14px;line-height:1.55;color:#8A5A10"><strong>Save your gift before you send.</strong> These keys live only in this page until you download them. If you lose the page now, the bitcoin can't be recovered by anyone.</div>
+        <div style="display:flex;gap:10px;margin-top:12px">
+          <button onClick="{{ downloadBackup }}" style="flex:1;padding:12px;border:none;border-radius:10px;background:#C97210;color:#fff;font-family:'Instrument Sans',sans-serif;font-weight:600;font-size:15px;cursor:pointer" style-hover="background:#A85F0D">{{ backupLabel }}</button>
+          <button onClick="{{ copyLink }}" style="flex:1;padding:12px;border:1.5px solid #D8D0C0;border-radius:10px;background:#fff;color:#23272E;font-family:'Instrument Sans',sans-serif;font-weight:600;font-size:15px;cursor:pointer" style-hover="background:#F6F1E6">{{ copyLinkLabel }}</button>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:18px;align-items:center;background:#fff;border:1px solid #EAE3D4;border-radius:16px;padding:18px;margin-bottom:16px">
+        <div style="flex:none;width:104px;height:104px;border-radius:10px;background:repeating-linear-gradient(45deg,#EDE6D6 0 8px,#F7F2E7 8px 16px);display:flex;align-items:center;justify-content:center;font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#9A8E71">QR code</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px;line-height:1.5;color:#4B5563;word-break:break-all;margin-bottom:10px">{{ giftAddr }}</div>
+          <button onClick="{{ copyAddr }}" style="padding:8px 14px;border:1.5px solid #D8D0C0;border-radius:9px;background:#fff;font-family:'Instrument Sans',sans-serif;font-weight:600;font-size:13px;color:#23272E;cursor:pointer" style-hover="background:#F6F1E6">{{ copyAddrLabel }}</button>
+        </div>
+      </div>
+
+      <div style="font-size:13px;font-weight:600;color:#B4A98F;letter-spacing:0.05em;text-transform:uppercase;margin:22px 0 10px">How will you pay?</div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:26px">
+        <sc-for list="{{ fundOpts }}" as="f" hint-placeholder-count="3">
+          <div onClick="{{ f.pick }}" style="{{ f.style }}">
+            <div style="font-size:15px;font-weight:600;margin-bottom:2px">{{ f.title }}</div>
+            <div style="font-size:13.5px;color:#6E7480;line-height:1.45">{{ f.desc }}</div>
+          </div>
+        </sc-for>
+      </div>
+
+      <sc-if value="{{ fundIdle }}" hint-placeholder-val="{{ true }}">
+        <button onClick="{{ markSent }}" style="{{ markSentStyle }}">{{ markSentLabel }}</button>
+        <div style="font-size:12.5px;color:#6E7480;margin-top:12px">Testnet coins have no value. Fund the address from a testnet4 faucet.</div>
+      </sc-if>
+      <sc-if value="{{ fundPending }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;gap:12px;background:#F9EFE1;border:1px solid #EBD9BC;border-radius:12px;padding:16px 18px">
+          <div style="flex:none;width:10px;height:10px;border-radius:50%;background:#C97210;opacity:0.9"></div>
+          <div style="font-size:14px;line-height:1.5;color:#8A5A10"><strong>Waiting for 1 confirmation…</strong> usually about 10 minutes. You can leave this page, and your gift card will be ready when you return.</div>
+        </div>
+      </sc-if>
+    </sc-if>
+
+    <!-- CREATE 4: SHARE -->
+    <sc-if value="{{ isC4 }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;justify-content:center;width:52px;height:52px;border-radius:50%;background:#E9F2EC;color:#2F7A52;font-size:24px;font-weight:700;margin-bottom:18px">✓</div>
+      <h2 style="font-family:'Bricolage Grotesque',sans-serif;font-size:25px;font-weight:600;letter-spacing:-0.015em;margin:0 0 8px">Your gift card is ready</h2>
+      <p style="font-size:15px;line-height:1.55;color:#6E7480;margin:0 0 22px">{{ usdDisplay }} in bitcoin is confirmed and waiting to be redeemed.</p>
+
+      <div style="{{ cardStyleBig }}">
+        <div style="{{ cardBandStyle }}"></div>
+        <div style="position:relative;display:flex;justify-content:space-between;align-items:flex-start">
+          <div style="font-size:12px;font-weight:600;letter-spacing:0.09em;text-transform:uppercase;opacity:0.85">{{ cardLabel }}</div>
+          <div style="font-weight:700;font-size:18px;opacity:0.95">₿</div>
+        </div>
+        <div style="position:relative;font-family:'Bricolage Grotesque',sans-serif;font-size:36px;font-weight:600;margin:auto 0 2px;padding-top:18px">{{ usdDisplay }}</div>
+        <div style="position:relative;font-size:13px;opacity:0.8">≈ {{ btcStr }} BTC · real bitcoin inside</div>
+        <sc-if value="{{ cardMsg }}" hint-placeholder-val="{{ false }}">
+          <div style="position:relative;font-size:13.5px;opacity:0.92;margin-top:14px;line-height:1.45;font-style:italic">"{{ cardMsg }}"{{ cardFromLine }}</div>
+        </sc-if>
+      </div>
+
+      <div style="background:#F9EFE1;border:1px solid #EBD9BC;border-radius:12px;padding:14px 16px;font-size:14px;line-height:1.55;color:#8A5A10;margin:18px 0 16px"><strong>This link is money.</strong> Anyone who has it can redeem the bitcoin, so share it privately, like cash.</div>
+
+      <!-- 4 secret words -->
+      <sc-if value="{{ passActive }}" hint-placeholder-val="{{ false }}">
+        <div style="background:#F9EFE1;border:1px solid #EBD9BC;border-radius:12px;padding:14px 16px;margin-bottom:16px">
+          <div style="font-size:12px;font-weight:600;color:#8A5A10;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:8px">The 4 secret words</div>
+          <div style="font-family:ui-monospace,Menlo,monospace;font-size:17px;font-weight:700;letter-spacing:0.02em;color:#23272E;margin-bottom:10px;user-select:all">{{ words }}</div>
+          <button onClick="{{ copyWords }}" style="padding:8px 14px;border:1.5px solid #D8D0C0;border-radius:9px;background:#fff;font-family:'Instrument Sans',sans-serif;font-weight:600;font-size:13px;color:#23272E;cursor:pointer">{{ copyWordsLabel }}</button>
+          <div style="font-size:12.5px;color:#8A5A10;margin-top:10px;line-height:1.5">Now text or tell them these 4 words. The {{ wordsChannel }} alone can't claim the gift.</div>
+        </div>
+      </sc-if>
+
+      <!-- Email delivery -->
+      <sc-if value="{{ isEmailDelivery }}" hint-placeholder-val="{{ false }}">
+        <div style="background:#fff;border:1px solid #EAE3D4;border-radius:14px;padding:18px;margin-bottom:16px">
+          <sc-if value="{{ sendSent }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;background:#E9F2EC;color:#2F7A52;font-size:17px;font-weight:700;margin-bottom:10px">✓</div>
+            <p style="font-size:14.5px;line-height:1.55;color:#4B5563;margin:0">Handed to the mail system. Confirm it arrived when you send them the 4 words.</p>
+          </sc-if>
+          <sc-if value="{{ sendIdle }}" hint-placeholder-val="{{ true }}">
+            <div style="font-size:12px;font-weight:600;color:#B4A98F;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:10px">Email it for them</div>
+            <input value="{{ toEmail }}" onChange="{{ onEmail }}" type="email" placeholder="recipient@example.com" style="width:100%;box-sizing:border-box;padding:12px 14px;border:1.5px solid #E3DCCE;border-radius:10px;font-family:'Instrument Sans',sans-serif;font-size:15px;outline-color:#C97210;background:#fff;margin-bottom:10px">
+            <div style="display:flex;align-items:center;gap:10px;background:#FAF8F4;border:1px solid #E3DCCE;border-radius:10px;padding:11px 14px;margin-bottom:12px">
+              <div style="flex:none;width:18px;height:18px;border:2px solid #C9BFA9;border-radius:4px;background:#fff"></div>
+              <div style="font-size:13px;color:#6E7480">Human check</div>
+              <div style="flex:1"></div>
+              <div style="font-size:11px;color:#B4A98F">Cloudflare</div>
+            </div>
+            <button onClick="{{ sendGift }}" disabled="{{ sendingNow }}" style="{{ primaryBtnStyle }}">{{ sendLabel }}</button>
+            <div style="font-size:12.5px;color:#6E7480;margin-top:10px;line-height:1.5">We email only the link. You send the 4 secret words yourself, by text or in person.</div>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <!-- Share actions -->
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <sc-if value="{{ canWebShare }}" hint-placeholder-val="{{ false }}">
+          <button onClick="{{ webShare }}" style="{{ primaryBtnStyle }}">Share…</button>
+        </sc-if>
+        <button onClick="{{ copyLink }}" style="{{ copyLinkBtnStyle }}">{{ copyLinkLabel }}</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;font-size:14px;font-weight:600;margin:14px 0 2px">
+        <a href="{{ waLink }}" target="_blank" rel="noreferrer">WhatsApp</a>
+        <span style="color:#D8D0C0">·</span>
+        <a href="{{ smsLink }}">Messages</a>
+      </div>
+
+      <!-- Gift link QR -->
+      <div style="max-width:220px;margin:20px auto 0;text-align:center">
+        <div style="width:180px;height:180px;margin:0 auto;border-radius:12px;background:repeating-linear-gradient(45deg,#EDE6D6 0 9px,#F7F2E7 9px 18px);display:flex;align-items:center;justify-content:center;font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#9A8E71">Gift link QR</div>
+        <div style="font-size:12.5px;color:#6E7480;margin-top:10px;line-height:1.5">{{ qrNote }}</div>
+      </div>
+
+      <!-- Other downloads -->
+      <div style="display:flex;align-items:center;gap:8px;margin-top:18px;font-size:13px;color:#6E7480">
+        <span onClick="{{ downloadBackup }}" style="color:#A85F0D;font-weight:600;cursor:pointer">{{ backupLabel }}</span>
+        <span style="color:#D8D0C0">·</span>
+        <span onClick="{{ dlShareCard }}" style="color:#A85F0D;font-weight:600;cursor:pointer">Share card file</span>
+        <span style="color:#D8D0C0">·</span>
+        <span onClick="{{ dlWatchOnly }}" style="color:#A85F0D;font-weight:600;cursor:pointer">Watch-only</span>
+      </div>
+      <div style="font-size:13px;color:#6E7480;line-height:1.55;margin-top:14px">The backup file contains your gift link{{ passNote }}. If the link is lost, no one, including us, can recover the bitcoin.</div>
+      <div onClick="{{ goHome }}" style="font-size:14px;font-weight:600;color:#A85F0D;cursor:pointer;margin-top:22px">Done → back to start</div>
+    </sc-if>
+
+    <!-- CLAIM 0: STATUS -->
+    <sc-if value="{{ isR0 }}" hint-placeholder-val="{{ false }}">
+      <div style="{{ cardStyleBig }}">
+        <div style="{{ cardBandStyle }}"></div>
+        <div style="position:relative;display:flex;justify-content:space-between;align-items:flex-start">
+          <div style="font-size:12px;font-weight:600;letter-spacing:0.09em;text-transform:uppercase;opacity:0.85">A gift for you</div>
+          <div style="font-weight:700;font-size:18px;opacity:0.95">₿</div>
+        </div>
+        <div style="position:relative;font-family:'Bricolage Grotesque',sans-serif;font-size:36px;font-weight:600;margin:auto 0 2px;padding-top:18px">$50</div>
+        <div style="position:relative;font-size:13px;opacity:0.8">≈ 0.00074 BTC · real bitcoin inside</div>
+        <div style="position:relative;font-size:13.5px;opacity:0.92;margin-top:14px;line-height:1.45;font-style:italic">"Happy birthday, Mel!" – Sam</div>
+      </div>
+      <div style="display:inline-flex;align-items:center;gap:8px;background:#E9F2EC;color:#2F7A52;font-size:13px;font-weight:600;border-radius:999px;padding:6px 14px;margin:18px 0 16px"><div style="width:7px;height:7px;border-radius:50%;background:#2F7A52"></div>Ready to redeem</div>
+      <h2 style="font-family:'Bricolage Grotesque',sans-serif;font-size:25px;font-weight:600;letter-spacing:-0.015em;margin:0 0 8px">Someone sent you bitcoin</h2>
+      <p style="font-size:15px;line-height:1.6;color:#6E7480;margin:0 0 24px;text-wrap:pretty">New to bitcoin? That's OK, and we'll walk you through it, step by step. It takes about two minutes.</p>
+      <button onClick="{{ goR1 }}" style="{{ primaryBtnStyle }}">Redeem your bitcoin</button>
+    </sc-if>
+
+    <!-- CLAIM 1: CHOOSE -->
+    <sc-if value="{{ isR1 }}" hint-placeholder-val="{{ false }}">
+      <h2 style="font-family:'Bricolage Grotesque',sans-serif;font-size:25px;font-weight:600;letter-spacing:-0.015em;margin:0 0 8px">Where should we send it?</h2>
+      <p style="font-size:15px;line-height:1.55;color:#6E7480;margin:0 0 20px">We recommend a wallet only you control. That's the whole point of bitcoin. Prefer an exchange? That works too.</p>
+
+      <div style="display:flex;align-items:center;gap:8px;margin:0 0 10px"><div style="width:7px;height:7px;border-radius:50%;background:#2F7A52"></div><div style="font-size:12px;font-weight:700;color:#2F7A52;letter-spacing:0.05em;text-transform:uppercase">You control it</div></div>
+
+      <div onClick="{{ pickRecommended }}" style="background:#fff;border:2px solid #C97210;border-radius:16px;padding:18px;margin-bottom:8px;cursor:pointer;box-shadow:0 4px 14px rgba(201,114,16,0.10)" style-hover="background:#FDF9F1">
+        <div style="display:inline-block;background:#F9EFE1;color:#8A5A10;font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;border-radius:6px;padding:3px 8px;margin-bottom:10px">Recommended</div>
+        <div style="font-size:16px;font-weight:600;margin-bottom:3px">{{ recTitle }}</div>
+        <div style="font-size:14px;color:#6E7480;line-height:1.5">{{ recDesc }}</div>
+      </div>
+      <div onClick="{{ pickPaste }}" style="background:#fff;border:1px solid #EAE3D4;border-radius:14px;padding:16px 18px;cursor:pointer;margin-bottom:22px" style-hover="border-color:#C97210">
+        <div style="font-size:15px;font-weight:600;margin-bottom:2px">I already have a wallet</div>
+        <div style="font-size:13.5px;color:#6E7480;line-height:1.45">Paste an address from any wallet you control</div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:8px;margin:0 0 10px"><div style="width:7px;height:7px;border-radius:50%;background:#B4A98F"></div><div style="font-size:12px;font-weight:700;color:#8B8578;letter-spacing:0.05em;text-transform:uppercase">Held for you</div></div>
+
+      <div onClick="{{ pickExchange }}" style="background:#fff;border:1px solid #EAE3D4;border-radius:14px;padding:16px 18px;cursor:pointer;margin-bottom:22px" style-hover="border-color:#C97210">
+        <div style="font-size:15px;font-weight:600;margin-bottom:2px">An exchange account</div>
+        <div style="font-size:13.5px;color:#6E7480;line-height:1.45">Coinbase, Kraken, Gemini: simplest if you have one, but they hold the bitcoin for you</div>
+      </div>
+
+      <div onClick="{{ goHelp }}" style="background:#fff;border:1px solid #EAE3D4;border-radius:14px;padding:16px 18px;cursor:pointer" style-hover="border-color:#C97210">
+        <div style="font-size:15px;font-weight:600;margin-bottom:2px">Help me choose</div>
+        <div style="font-size:13.5px;color:#6E7480;line-height:1.45">A 30-second guide, no jargon</div>
+      </div>
+    </sc-if>
+
+    <!-- CLAIM 2: PASTE -->
+    <sc-if value="{{ isR2 }}" hint-placeholder-val="{{ false }}">
+      <h2 style="font-family:'Bricolage Grotesque',sans-serif;font-size:25px;font-weight:600;letter-spacing:-0.015em;margin:0 0 8px">{{ guideTitle }}</h2>
+      <div style="display:flex;flex-direction:column;gap:0;margin:18px 0 24px">
+        <sc-for list="{{ guideSteps }}" as="g" hint-placeholder-count="3">
+          <div style="display:flex;gap:14px;align-items:flex-start;padding:10px 0">
+            <div style="flex:none;width:26px;height:26px;border-radius:50%;background:#F3EBDB;color:#8A5A10;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center">{{ g.n }}</div>
+            <div style="font-size:14.5px;line-height:1.55;color:#4B5563;padding-top:2px">{{ g.text }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="font-size:13px;font-weight:600;color:#B4A98F;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:10px">Paste your bitcoin address</div>
+      <textarea value="{{ address }}" onChange="{{ onAddr }}" placeholder="bc1q…" rows="3" style="width:100%;box-sizing:border-box;padding:14px 16px;border:1.5px solid #E3DCCE;border-radius:12px;background:#fff;font-family:ui-monospace,Menlo,monospace;font-size:14px;line-height:1.5;resize:none;outline-color:#C97210"></textarea>
+      <sc-if value="{{ addrError }}" hint-placeholder-val="{{ false }}">
+        <div style="font-size:13.5px;color:#B4483C;margin-top:8px;line-height:1.5">{{ addrError }}</div>
+      </sc-if>
+      <div style="margin-top:20px">
+        <button onClick="{{ submitAddr }}" style="{{ primaryBtnStyle }}">Continue</button>
+      </div>
+    </sc-if>
+
+    <!-- CLAIM 3: REVIEW -->
+    <sc-if value="{{ isR3 }}" hint-placeholder-val="{{ false }}">
+      <h2 style="font-family:'Bricolage Grotesque',sans-serif;font-size:25px;font-weight:600;letter-spacing:-0.015em;margin:0 0 20px">Review</h2>
+      <div style="background:#fff;border:1px solid #EAE3D4;border-radius:16px;padding:6px 18px;margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;padding:13px 0;border-bottom:1px solid #F2EDE1;font-size:14.5px"><span style="color:#6E7480">Gift card</span><span style="font-weight:600">$50 · 0.00074 BTC</span></div>
+        <div style="display:flex;justify-content:space-between;padding:13px 0;border-bottom:1px solid #F2EDE1;font-size:14.5px;gap:16px"><span style="color:#6E7480;flex:none">Network fee ({{ speedName }})</span><span style="font-weight:600">− {{ feeEstStr }}</span></div>
+        <div style="display:flex;justify-content:space-between;padding:13px 0;border-bottom:1px solid #F2EDE1;font-size:14.5px"><span style="color:#6E7480">You receive</span><span style="font-weight:700;color:#2F7A52">{{ netStr }}</span></div>
+        <div style="display:flex;justify-content:space-between;padding:13px 0;font-size:14.5px;gap:16px"><span style="color:#6E7480;flex:none">To</span><span style="font-family:ui-monospace,Menlo,monospace;font-size:13px;color:#4B5563">{{ truncAddr }}</span></div>
+      </div>
+      <sc-if value="{{ isExchangeDest }}" hint-placeholder-val="{{ false }}">
+        <div style="background:#F6F1E6;border:1px solid #EAE3D4;border-radius:12px;padding:14px 16px;font-size:13.5px;line-height:1.55;color:#6E7480;margin-bottom:16px">Exchanges hold bitcoin on your behalf. Someday, you might like moving it to a wallet only you control, with no rush and no pressure.</div>
+      </sc-if>
+      <div style="font-size:13.5px;line-height:1.55;color:#6E7480;margin-bottom:20px">Redeeming sends the full amount in one go. Afterwards, the gift link is empty and can't be used again.</div>
+      <button onClick="{{ claimNow }}" style="{{ primaryBtnStyle }}">{{ claimLabel }}</button>
+    </sc-if>
+
+    <!-- CLAIM 4: SUCCESS -->
+    <sc-if value="{{ isR4 }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;justify-content:center;width:52px;height:52px;border-radius:50%;background:#E9F2EC;color:#2F7A52;font-size:24px;font-weight:700;margin-bottom:18px">✓</div>
+      <h2 style="font-family:'Bricolage Grotesque',sans-serif;font-size:25px;font-weight:600;letter-spacing:-0.015em;margin:0 0 8px">It's on the way</h2>
+      <p style="font-size:15px;line-height:1.6;color:#6E7480;margin:0 0 20px">{{ netStr }} has been sent to your address. Nothing else to do.</p>
+      <div style="background:#fff;border:1px solid #EAE3D4;border-radius:14px;padding:16px 18px;margin-bottom:14px">
+        <div style="font-size:12px;font-weight:600;color:#B4A98F;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:6px">Transaction</div>
+        <a href="#" style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px;word-break:break-all">a3f9c1…e84b02 ↗</a>
+      </div>
+      <sc-if value="{{ isExchangeDest }}" hint-placeholder-val="{{ false }}">
+        <div style="background:#F6F1E6;border:1px solid #EAE3D4;border-radius:12px;padding:14px 16px;font-size:13.5px;line-height:1.55;color:#6E7480;margin-bottom:14px">Heads up: exchanges can take 10–60 minutes to show incoming bitcoin. It's normal.</div>
+      </sc-if>
+      <div style="font-size:13.5px;color:#6E7480;line-height:1.55">This gift card has now been redeemed, and the link is empty.</div>
+      <div onClick="{{ goHome }}" style="font-size:14px;font-weight:600;color:#A85F0D;cursor:pointer;margin-top:24px">Done</div>
+    </sc-if>
+
+    <!-- HELP -->
+    <sc-if value="{{ isHelp }}" hint-placeholder-val="{{ false }}">
+      <h2 style="font-family:'Bricolage Grotesque',sans-serif;font-size:25px;font-weight:600;letter-spacing:-0.015em;margin:0 0 20px">Quick help</h2>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="background:#fff;border:1px solid #EAE3D4;border-radius:14px;padding:16px 18px"><div style="font-size:15px;font-weight:600;margin-bottom:4px">What is this?</div><div style="font-size:14px;line-height:1.55;color:#6E7480">Someone gave you real bitcoin. The gift link is what controls it, like cash in an envelope.</div></div>
+        <div style="background:#fff;border:1px solid #EAE3D4;border-radius:14px;padding:16px 18px"><div style="font-size:15px;font-weight:600;margin-bottom:4px">Which option should I pick?</div><div style="font-size:14px;line-height:1.55;color:#6E7480">Best option: a wallet only you control. <strong style="color:#23272E">Phoenix</strong> is a free app that takes a minute to set up. Already have a wallet? Paste its address. An exchange (Coinbase, Kraken) is the simplest fallback, but it holds the bitcoin for you rather than you holding it yourself.</div></div>
+        <div style="background:#fff;border:1px solid #EAE3D4;border-radius:14px;padding:16px 18px"><div style="font-size:15px;font-weight:600;margin-bottom:4px">Is this safe?</div><div style="font-size:14px;line-height:1.55;color:#6E7480">The link is like cash, so keep it private. This site never holds the bitcoin or your keys.</div></div>
+        <div style="background:#fff;border:1px solid #EAE3D4;border-radius:14px;padding:16px 18px"><div style="font-size:15px;font-weight:600;margin-bottom:4px">What if I lose the link?</div><div style="font-size:14px;line-height:1.55;color:#6E7480">It can't be recovered by anyone. That's what makes it truly yours. Download the backup when offered.</div></div>
+      </div>
+      <div style="margin-top:24px"><button onClick="{{ goR1 }}" style="{{ primaryBtnStyle }}">Back to redeeming</button></div>
+    </sc-if>
+
+    <!-- RECOVER -->
+    <sc-if value="{{ isRecover }}" hint-placeholder-val="{{ false }}">
+      <h2 style="font-family:'Bricolage Grotesque',sans-serif;font-size:25px;font-weight:600;letter-spacing:-0.015em;margin:0 0 8px">Recover an unredeemed gift</h2>
+      <p style="font-size:15px;line-height:1.6;color:#6E7480;margin:0 0 20px">If your gift card wasn't redeemed before it expired, you can send the bitcoin back to yourself. Paste your gift link or open your backup file.</p>
+      <textarea placeholder="https://giftbitcoin.app/g#…" rows="2" style="width:100%;box-sizing:border-box;padding:14px 16px;border:1.5px solid #E3DCCE;border-radius:12px;background:#fff;font-family:ui-monospace,Menlo,monospace;font-size:13px;line-height:1.5;resize:none;outline-color:#C97210;margin-bottom:16px"></textarea>
+      <button onClick="{{ checkRecover }}" style="{{ primaryBtnStyle }}">Check status</button>
+      <sc-if value="{{ recoverChecked }}" hint-placeholder-val="{{ false }}">
+        <div style="background:#F6F1E6;border:1px solid #EAE3D4;border-radius:12px;padding:14px 16px;font-size:14px;line-height:1.55;color:#6E7480;margin-top:16px">This gift card is still active and can be redeemed until <strong style="color:#23272E">Oct 9, 2026</strong>. After that date, this page will let you reclaim it to any address.</div>
+      </sc-if>
+      <div onClick="{{ toggleAdv }}" style="font-size:13.5px;font-weight:600;color:#A85F0D;cursor:pointer;margin-top:22px">Advanced {{ advChevron }}</div>
+      <sc-if value="{{ showAdv }}" hint-placeholder-val="{{ false }}">
+        <div style="font-size:13px;line-height:1.6;color:#6E7480;margin-top:10px;font-family:ui-monospace,Menlo,monospace">The gift key is in your link's fragment (#…), never sent to our servers. You can sweep the address directly with any wallet that imports WIF keys.</div>
+      </sc-if>
+    </sc-if>
+
+  </div>
+  </div>
+
+  <!-- Footer -->
+  <div style="flex:none;border-top:1px solid #EEE7D9;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;gap:12px;background:#FAF8F4">
+    <div style="font-size:11px;color:#B4A98F;line-height:1.45;max-width:70%">A gift link is a bearer instrument, like cash. Lost links can't be recovered by anyone.</div>
+    <div style="display:flex;gap:14px;font-size:12px;font-weight:600;color:#6E7480;flex:none">
+      <span onClick="{{ goHelp }}" style="cursor:pointer" style-hover="color:#23272E">Help</span>
+      <span onClick="{{ goRecover }}" style="cursor:pointer" style-hover="color:#23272E">Recover</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = {
+    screen: 'home', design: 'classic', denom: 'usd', usdAmount: '50', btcAmount: '0.001', fiatCode: 'USD', fiatSymbol: '$',
+    toName: '', fromName: '', message: '',
+    advCreateOpen: false, speed: 'normal', tipPct: 3, expiry: 90,
+    delivery: 'self', passOptIn: false, words: '', wordsCopied: false,
+    toEmail: '', sendState: 'idle', canWebShare: false,
+    fund: 'have', fundStatus: 'idle', copiedAddr: false,
+    dest: null, address: '', addrError: '', sending: false,
+    linkCopied: false, backedUp: false, showAdv: false, recoverChecked: false
+  };
+
+  componentDidMount() {
+    try {
+      const loc = (Intl.DateTimeFormat().resolvedOptions().locale || navigator.language || '');
+      const region = (loc.split('-')[1] || '').toUpperCase();
+      const map = {
+        US: ['USD', '$'], GB: ['GBP', '\u00a3'], CA: ['CAD', '$'], AU: ['AUD', '$'],
+        JP: ['JPY', '\u00a5'], IN: ['INR', '\u20b9'], NG: ['NGN', '\u20a6'], BR: ['BRL', 'R$'],
+        MX: ['MXN', '$'], CH: ['CHF', 'CHF '], ZA: ['ZAR', 'R'],
+        DE: ['EUR', '\u20ac'], FR: ['EUR', '\u20ac'], ES: ['EUR', '\u20ac'], IT: ['EUR', '\u20ac'],
+        NL: ['EUR', '\u20ac'], IE: ['EUR', '\u20ac'], PT: ['EUR', '\u20ac'], AT: ['EUR', '\u20ac']
+      };
+      if (map[region]) this.setState({ fiatCode: map[region][0], fiatSymbol: map[region][1] });
+      if (['SV', 'CF'].includes(region)) this.setState({ denom: 'btc' });
+      this.setState({ canWebShare: !!(navigator.share) });
+    } catch (e) {}
+  }
+
+  genWords() {
+    const W = ['acorn', 'anchor', 'apple', 'arrow', 'autumn', 'badge', 'bamboo', 'basket', 'beacon', 'birch', 'breeze', 'cabin', 'cactus', 'candle', 'canyon', 'cedar', 'cider', 'clover', 'comet', 'copper', 'coral', 'cricket', 'crimson', 'crystal', 'dahlia', 'daisy', 'dawn', 'delta', 'ember', 'fable', 'falcon', 'fern', 'fjord', 'garnet', 'ginger', 'glacier', 'harbor', 'hazel', 'heron', 'indigo', 'ivory', 'jasmine', 'juniper', 'lagoon', 'lantern', 'maple', 'meadow', 'mint', 'myrtle', 'nectar', 'oasis', 'opal', 'orchid', 'otter', 'pebble', 'pepper', 'pine', 'poppy', 'quartz', 'quill', 'raven', 'ripple', 'saffron', 'sage', 'sienna', 'sparrow', 'spruce', 'sunset', 'thistle', 'timber', 'topaz', 'tulip', 'umber', 'velvet', 'walnut', 'willow', 'yarrow', 'zephyr'];
+    const out = [];
+    for (let i = 0; i < 4; i++) out.push(W[Math.floor(Math.random() * W.length)]);
+    return out.join(' ');
+  }
+
+  dlFile(name, kind) {
+    try {
+      const blob = new Blob(['giftbitcoin.app ' + kind + ' (demo file)\n'], { type: 'application/json' });
+      const u = URL.createObjectURL(blob);
+      const el = document.createElement('a'); el.href = u; el.download = name; el.click();
+      URL.revokeObjectURL(u);
+    } catch (e) {}
+  }
+
+  fmtBtc(n) {
+    let s = n.toFixed(8).replace(/0+$/, '').replace(/\.$/, '');
+    return s === '' ? '0' : s;
+  }
+
+  renderVals() {
+    const s = this.state;
+    const isDesktop = (this.props.device ?? 'mobile') === 'desktop';
+    const price = 67400;
+    const denom = s.denom || 'usd';
+    const usdPresetVals = ['25', '50', '100', '250'];
+    const btcPresetVals = ['0.0005', '0.001', '0.0025', '0.005'];
+    const curVals = denom === 'btc' ? btcPresetVals : usdPresetVals;
+    const curAmount = denom === 'btc' ? s.btcAmount : s.usdAmount;
+    const isCustom = !curVals.includes(curAmount);
+    const usd = denom === 'btc' ? (parseFloat(s.btcAmount) || 0) * price : (parseFloat(s.usdAmount) || 0);
+    const fiatSymbol = s.fiatSymbol || '$';
+    const fiatCode = s.fiatCode || 'USD';
+    const fiatFmt = v => fiatSymbol + (Math.round(v * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: v % 1 ? 2 : 0, maximumFractionDigits: 2 });
+    const btc = usd / price;
+    const tipUsd = usd * s.tipPct / 100;
+    const totalUsd = usd + tipUsd;
+    const go = sc => this.setState({ screen: sc });
+    const money = v => '$' + (Math.round(v * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: v % 1 ? 2 : 0, maximumFractionDigits: 2 });
+    const passActive = s.delivery === 'email' || s.passOptIn;
+    const shareLink = 'https://giftbitcoin.app/c#g1.demo-share-card';
+
+    const DESIGNS = [
+      { id: 'classic', name: 'Classic', label: 'Bitcoin gift card',
+        bg: 'linear-gradient(135deg,#D98A2B,#B8650E)', shadow: 'rgba(201,114,16,0.28)',
+        band: 'position:absolute;inset:0;background:repeating-linear-gradient(115deg,rgba(255,255,255,0.07) 0 26px,rgba(255,255,255,0) 26px 52px)' },
+      { id: 'birthday', name: 'Birthday', label: 'Happy birthday',
+        bg: 'linear-gradient(135deg,#C65A45,#A8402E)', shadow: 'rgba(166,64,46,0.28)',
+        band: 'position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,0.35) 2.5px,transparent 3px),radial-gradient(rgba(255,220,150,0.5) 2px,transparent 2.5px);background-size:58px 58px,40px 40px;background-position:8px 12px,28px 32px' },
+      { id: 'midnight', name: 'Midnight', label: 'A gift for you',
+        bg: 'linear-gradient(135deg,#2E3947,#1D2430)', shadow: 'rgba(29,36,48,0.35)',
+        band: 'position:absolute;top:0;bottom:0;right:58px;width:14px;background:#C97210;opacity:0.9' },
+      { id: 'holiday', name: 'Holiday', label: 'Season\u2019s greetings',
+        bg: 'linear-gradient(135deg,#3A7A5B,#27573F)', shadow: 'rgba(39,87,63,0.3)',
+        band: 'position:absolute;width:220px;height:220px;border-radius:50%;background:rgba(255,255,255,0.09);right:-60px;top:-90px' }
+    ];
+    const design = DESIGNS.find(d => d.id === s.design) || DESIGNS[0];
+
+    const SPEEDS = [
+      { id: 'economy', name: 'Economy', rate: 2, eta: '2\u20136 hours' },
+      { id: 'normal', name: 'Standard', rate: 6, eta: '~30 minutes' },
+      { id: 'priority', name: 'Priority', rate: 15, eta: '~10 minutes' }
+    ];
+    const speed = SPEEDS.find(x => x.id === s.speed) || SPEEDS[1];
+    const feeBtc = 140 * speed.rate / 1e8;
+    const feeUsd = feeBtc * price;
+    const feeEstStr = money(feeUsd) + ' (' + this.fmtBtc(feeBtc) + ' BTC)';
+
+    const denomLabelStyle = on => 'font-family:Instrument Sans,sans-serif;font-weight:700;font-size:12px;letter-spacing:0.02em;color:' + (on ? '#C97210' : '#B4A98F');
+    const chipStyle = on => 'padding:10px 14px;border-radius:10px;border:' + (on ? '2px solid #C97210' : '1px solid #E3DCCE') + ';background:' + (on ? '#F9EFE1' : '#fff') + ';color:' + (on ? '#8A5A10' : '#4B5563') + ';font-family:Instrument Sans,sans-serif;font-weight:600;font-size:14px;cursor:pointer';
+    const cardOptStyle = on => 'background:#fff;border:' + (on ? '2px solid #C97210' : '1px solid #EAE3D4') + ';border-radius:14px;padding:14px 16px;cursor:pointer';
+
+    const stepMap = { c1: 'Step 1 of 3 \u00b7 Your card', c3: 'Step 2 of 3 \u00b7 Pay', c4: 'Step 3 of 3 \u00b7 Share' };
+    const backMap = { c1: 'home', c3: 'c1', c4: 'home', r0: 'home', r1: 'r0', r2: 'r1', r3: 'r2', r4: 'home', help: 'home', recover: 'home' };
+
+    const guides = {
+      phoenix: { title: 'Set up Phoenix', steps: ['Install the free Phoenix app from your app store.', 'Open it and tap "Receive".', 'Tap "Copy address", then paste it below.'] },
+      sparrow: { title: 'Set up Sparrow', steps: ['Download Sparrow Wallet from sparrowwallet.com.', 'Create a wallet and open the "Receive" tab.', 'Copy the address shown, then paste it below.'] },
+      exchange: { title: 'Get your exchange address', steps: ['Open your exchange app (Coinbase, Kraken, Gemini\u2026).', 'Find "Receive" or "Deposit" and choose Bitcoin.', 'Copy the address it shows, then paste it below.'] },
+      paste: { title: 'Paste your address', steps: ['Open your wallet and find "Receive".', 'Copy the bitcoin address.', 'Paste it below \u2014 we\u2019ll double-check it looks right.'] }
+    };
+    const guide = guides[s.dest] || guides.paste;
+
+    const giftBtc = 0.00074;
+    const netBtc = Math.max(giftBtc - feeBtc, 0);
+    const netStr = this.fmtBtc(netBtc) + ' BTC (\u2248 ' + money(netBtc * price) + ')';
+
+    const a = s.address.trim();
+    const truncAddr = a.length > 18 ? a.slice(0, 10) + '\u2026' + a.slice(-7) : a;
+
+    const submitAddr = () => {
+      const ok = /^(bc1|tb1)[a-z0-9]{20,}$/i.test(a) || /^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$/.test(a);
+      if (!ok) {
+        this.setState({ addrError: 'That doesn\u2019t look like a bitcoin address. It usually starts with "bc1" (or "tb1" in test mode) and has no spaces.' });
+      } else {
+        this.setState({ addrError: '', screen: 'r3' });
+      }
+    };
+
+    return {
+      isDesktop,
+      isHome: s.screen === 'home', isC1: s.screen === 'c1', isC3: s.screen === 'c3',
+      isC4: s.screen === 'c4', isR0: s.screen === 'r0', isR1: s.screen === 'r1',
+      isR2: s.screen === 'r2', isR3: s.screen === 'r3', isR4: s.screen === 'r4',
+      isHelp: s.screen === 'help', isRecover: s.screen === 'recover',
+      isInner: s.screen !== 'home',
+      stepLabel: stepMap[s.screen] || false,
+      onBack: () => go(backMap[s.screen] || 'home'),
+      goHome: () => go('home'), goCreate: () => go('c1'), goClaim: () => go('r0'),
+      goC3: () => go('c3'), goR1: () => go('r1'),
+      goHelp: () => go('help'), goRecover: () => go('recover'),
+
+      cardStyleBig: 'position:relative;overflow:hidden;border-radius:18px;padding:24px;box-sizing:border-box;color:#fff;background:' + design.bg + ';box-shadow:0 12px 28px ' + design.shadow + ';width:100%;max-width:420px;aspect-ratio:1.586/1;display:flex;flex-direction:column',
+      cardBandStyle: design.band,
+      cardLabel: design.label,
+      usdDisplay: money(usd),
+      btcStr: this.fmtBtc(btc),
+      designs: DESIGNS.map(d => ({
+        name: d.name,
+        pick: () => this.setState({ design: d.id }),
+        thumbStyle: 'width:64px;aspect-ratio:1.586/1;border-radius:9px;background:' + d.bg + ';box-shadow:' + (d.id === s.design ? '0 0 0 2px #FAF8F4,0 0 0 4.5px #C97210' : '0 2px 6px rgba(0,0,0,0.15)'),
+        nameStyle: 'font-size:11px;font-weight:600;color:' + (d.id === s.design ? '#8A5A10' : '#8B8578')
+      })),
+      toggleDenom: () => this.setState({ denom: denom === 'btc' ? 'usd' : 'btc' }),
+      fiatCode,
+      denomTopStyle: denomLabelStyle(denom === 'usd'),
+      denomBotStyle: denomLabelStyle(denom === 'btc'),
+      presets: curVals.map(v => ({
+        label: (denom === 'btc' ? '\u20bf' : fiatSymbol) + v, style: chipStyle(!isCustom && curAmount === v),
+        pick: () => this.setState(denom === 'btc' ? { btcAmount: v } : { usdAmount: v })
+      })).concat([{
+        label: 'Custom', style: chipStyle(isCustom),
+        pick: () => this.setState(denom === 'btc' ? { btcAmount: '' } : { usdAmount: '' })
+      }]),
+      amountFieldStyle: 'display:flex;align-items:stretch;overflow:hidden;background:#fff;border:' + (isCustom ? '2px solid #C97210' : '1.5px solid #E3DCCE') + ';border-radius:14px;min-height:66px;margin-bottom:10px',
+      amountValue: curAmount,
+      amountPrefix: denom === 'btc' ? '\u20bf' : fiatSymbol,
+      amountSuffix: denom === 'btc' ? 'BTC' : fiatCode,
+      amountTail: denom === 'btc' ? '(\u2248 ' + fiatFmt(usd) + ')' : 'at today\u2019s rate.',
+      onAmount: e => this.setState(denom === 'btc' ? { btcAmount: e.target.value } : { usdAmount: e.target.value }),
+      amountInvalid: !(usd > 0),
+      primaryBtnStyle: 'display:block;width:100%;padding:15px;border:none;border-radius:12px;background:' + ((s.screen === 'c1' && !(usd > 0)) ? '#DCC9A8' : '#C97210') + ';color:#fff;font-family:Instrument Sans,sans-serif;font-weight:600;font-size:16px;cursor:pointer',
+
+      toName: s.toName, onTo: e => this.setState({ toName: e.target.value }),
+      fromName: s.fromName, onFrom: e => this.setState({ fromName: e.target.value }),
+      message: s.message, onMessage: e => this.setState({ message: e.target.value }),
+
+      toggleAdvCreate: () => this.setState({ advCreateOpen: !s.advCreateOpen }),
+      advCreateOpen: s.advCreateOpen,
+      advCreateChevron: s.advCreateOpen ? '\u25b4' : '\u25be',
+      speeds: SPEEDS.map(x => ({
+        label: x.name, style: chipStyle(s.speed === x.id), pick: () => this.setState({ speed: x.id })
+      })),
+      feeEstStr, feeEta: speed.eta, speedName: speed.name,
+      tipPct: s.tipPct,
+      tipUsdStr: money(tipUsd),
+      tips: [0, 1, 3, 5].map(p => ({
+        label: p + '%', style: chipStyle(s.tipPct === p), pick: () => this.setState({ tipPct: p })
+      })),
+      expiries: [30, 90, 180].map(d => ({
+        label: d + ' days', style: chipStyle(s.expiry === d), pick: () => this.setState({ expiry: d })
+      })),
+      isSelfDelivery: s.delivery === 'self',
+      isEmailDelivery: s.delivery === 'email',
+      showSelfNoPassNote: s.delivery === 'self' && !s.passOptIn,
+      deliverSelfStyle: cardOptStyle(s.delivery === 'self'),
+      deliverEmailStyle: cardOptStyle(s.delivery === 'email'),
+      pickSelf: () => this.setState({ delivery: 'self' }),
+      pickEmail: () => this.setState({ delivery: 'email', words: s.words || this.genWords() }),
+      passOptIn: s.passOptIn,
+      togglePassOptIn: e => { const on = e.target.checked; this.setState({ passOptIn: on, words: (on && !s.words) ? this.genWords() : s.words }); },
+      passActive,
+      words: s.words,
+      wordsChannel: s.delivery === 'email' ? 'email' : 'link',
+      copyWords: () => { try { navigator.clipboard.writeText(s.words); } catch (e) {} this.setState({ wordsCopied: true }); setTimeout(() => this.setState({ wordsCopied: false }), 1800); },
+      copyWordsLabel: s.wordsCopied ? 'Copied \u2713' : 'Copy words',
+
+      totalUsdStr: money(totalUsd),
+      totalBtcStr: this.fmtBtc(totalUsd / price),
+      giftAddr: 'tb1qgift4u8k2m9x7c3v5b1n0p6q8r2t4y6u8i0o3d',
+      copyAddr: () => {
+        try { navigator.clipboard.writeText('tb1qgift4u8k2m9x7c3v5b1n0p6q8r2t4y6u8i0o3d'); } catch (e) {}
+        this.setState({ copiedAddr: true });
+        setTimeout(() => this.setState({ copiedAddr: false }), 1800);
+      },
+      copyAddrLabel: s.copiedAddr ? 'Copied \u2713' : 'Copy address',
+      fundOpts: [
+        { id: 'have', title: 'I already have bitcoin', desc: 'Send from your own wallet or exchange' },
+        { id: 'buy', title: 'I need to buy some first', desc: 'Buy on any exchange, then send it here' },
+        { id: 'guide', title: 'Walk me through it', desc: 'Step-by-step with Coinbase or Kraken' }
+      ].map(o => ({ ...o, style: cardOptStyle(s.fund === o.id), pick: () => this.setState({ fund: o.id }) })),
+      fundIdle: s.fundStatus === 'idle',
+      fundPending: s.fundStatus === 'pending',
+      markSent: () => {
+        if (!s.backedUp) return;
+        this.setState({ fundStatus: 'pending' });
+        setTimeout(() => this.setState({ fundStatus: 'confirmed', screen: 'c4' }), 2600);
+      },
+      markSentStyle: 'display:block;width:100%;padding:15px;border:none;border-radius:12px;background:' + (s.backedUp ? '#C97210' : '#DCC9A8') + ';color:#fff;font-family:Instrument Sans,sans-serif;font-weight:600;font-size:16px;cursor:' + (s.backedUp ? 'pointer' : 'not-allowed'),
+      markSentLabel: s.backedUp ? "I've sent it" : 'Save your backup first \u2191',
+
+      cardMsg: s.message.trim() || false,
+      cardFromLine: s.fromName.trim() ? ' \u2014 ' + s.fromName.trim() : '',
+      passNote: passActive ? ' (the 4 secret words are not included; send them separately)' : '',
+      downloadBackup: () => {
+        try {
+          const blob = new Blob(['giftbitcoin.app backup\n\nGift link: https://giftbitcoin.app/g#tb1-demo-secret\nAmount: ' + money(usd) + ' (\u2248 ' + this.fmtBtc(btc) + ' BTC)\nExpires: after ' + s.expiry + ' days\n\nThis link is money. Keep it private.'], { type: 'text/plain' });
+          const u = URL.createObjectURL(blob);
+          const el = document.createElement('a'); el.href = u; el.download = 'giftbitcoin-backup.txt'; el.click();
+          URL.revokeObjectURL(u);
+        } catch (e) {}
+        this.setState({ backedUp: true });
+      },
+      backupLabel: s.backedUp ? 'Backup downloaded \u2713' : 'Download backup',
+      copyLink: () => {
+        try { navigator.clipboard.writeText('https://giftbitcoin.app/g#tb1-demo-secret'); } catch (e) {}
+        this.setState({ linkCopied: true });
+        setTimeout(() => this.setState({ linkCopied: false }), 1800);
+      },
+      copyLinkLabel: s.linkCopied ? 'Link copied \u2713' : 'Copy gift link',
+      copyLinkBtnStyle: (s.canWebShare ? 'width:100%;padding:14px;border:1.5px solid #D8D0C0;border-radius:12px;background:#fff;color:#23272E' : 'display:block;width:100%;padding:15px;border:none;border-radius:12px;background:#C97210;color:#fff') + ';font-family:Instrument Sans,sans-serif;font-weight:600;font-size:16px;cursor:pointer',
+      canWebShare: s.canWebShare,
+      webShare: () => { try { navigator.share({ url: shareLink }); } catch (e) {} },
+      waLink: 'https://wa.me/?text=' + encodeURIComponent(shareLink),
+      smsLink: 'sms:?&body=' + encodeURIComponent(shareLink),
+      toEmail: s.toEmail,
+      onEmail: e => this.setState({ toEmail: e.target.value }),
+      sendIdle: s.sendState !== 'sent',
+      sendSent: s.sendState === 'sent',
+      sendingNow: s.sendState === 'sending',
+      sendLabel: s.sendState === 'sending' ? 'Sending\u2026' : 'Send the gift email',
+      sendGift: () => {
+        const to = (s.toEmail || '').trim();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) { this.setState({ sendState: 'error' }); return; }
+        this.setState({ sendState: 'sending' });
+        setTimeout(() => this.setState({ sendState: 'sent' }), 1600);
+      },
+      qrNote: (s.delivery === 'self' && s.passOptIn) ? 'This QR includes the secret words for a single-scan in-person handoff. Show it only to the recipient; the copy/share link never includes them.' : 'Scanning opens the gift link directly.',
+      dlShareCard: () => this.dlFile('giftbitcoin-share-card.json', 'share_card'),
+      dlWatchOnly: () => this.dlFile('giftbitcoin-watch-only.json', 'watch_only'),
+
+      recTitle: isDesktop ? 'Sparrow \u2014 a wallet on this computer' : 'Phoenix \u2014 a free wallet app',
+      recDesc: isDesktop ? 'Your bitcoin, on your own machine. Or continue on your phone instead.' : 'Your bitcoin, on your phone. Takes about a minute to set up.',
+      pickRecommended: () => this.setState({ dest: isDesktop ? 'sparrow' : 'phoenix', screen: 'r2', addrError: '' }),
+      pickExchange: () => this.setState({ dest: 'exchange', screen: 'r2', addrError: '' }),
+      pickPaste: () => this.setState({ dest: 'paste', screen: 'r2', addrError: '' }),
+
+      guideTitle: guide.title,
+      guideSteps: guide.steps.map((t, i) => ({ n: i + 1, text: t })),
+      address: s.address,
+      onAddr: e => this.setState({ address: e.target.value, addrError: '' }),
+      addrError: s.addrError || false,
+      submitAddr,
+      truncAddr,
+      netStr,
+      isExchangeDest: s.dest === 'exchange',
+      claimNow: () => {
+        if (s.sending) return;
+        this.setState({ sending: true });
+        setTimeout(() => this.setState({ sending: false, screen: 'r4' }), 1400);
+      },
+      claimLabel: s.sending ? 'Sending\u2026' : 'Redeem my bitcoin',
+
+      checkRecover: () => this.setState({ recoverChecked: true }),
+      recoverChecked: s.recoverChecked,
+      toggleAdv: () => this.setState({ showAdv: !s.showAdv }),
+      showAdv: s.showAdv,
+      advChevron: s.showAdv ? '\u25b4' : '\u25be'
+    };
+  }
+}
+</script>
+</body>
+</html>

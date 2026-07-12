@@ -475,8 +475,8 @@
 			<div class="opt-desc">Coinbase, Kraken, Gemini — if you already have one</div>
 		</button>
 		<button class="opt" onclick={() => pick('paste')}>
-			<div class="opt-title">I have a bitcoin address</div>
-			<div class="opt-desc">Paste any address from any wallet</div>
+			<div class="opt-title">I already have a wallet</div>
+			<div class="opt-desc">Paste an address from any wallet you control</div>
 		</button>
 		<button class="opt" onclick={() => (screen = 'help')}>
 			<div class="opt-title">Help me choose</div>

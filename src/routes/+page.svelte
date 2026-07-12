@@ -8,16 +8,21 @@
 	const bullets = [
 		{ h: 'Non-custodial.', t: 'The bitcoin lives at an address only your gift link controls — we never hold keys.' },
 		{ h: 'No account needed.', t: 'Not for you, not for them.' },
-		{ h: 'Redeem anywhere.', t: 'Phoenix, Coinbase, Kraken, or any bitcoin address.' }
+		{
+			h: 'Redeem to your own wallet.',
+			t: "We'll help you set one up, or use an exchange like Coinbase if you'd rather."
+		}
 	];
 </script>
 
 <div class="home">
 	<div class="hero-mark">₿</div>
-	<h1>The gift card that's real bitcoin.</h1>
+	<div class="eyebrow">E-gift card · real bitcoin</div>
+	<h1>The e-gift card that's real bitcoin.</h1>
 	<p class="hero-lede">
-		Pick a card, choose an amount in dollars, share a link. They redeem it to any wallet or
-		exchange. No accounts — and we never touch the money.
+		A digital gift card you send by link, with nothing to mail. Pick a design, choose an amount in
+		dollars, and share it. They redeem it to a wallet they control. No accounts, and we never touch
+		the money.
 	</p>
 	<div class="cta">
 		<button class="btn btn-primary" onclick={() => goto('/create')}>Create a gift card</button>
@@ -38,15 +43,27 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 72px;
-		height: 50px;
+		width: 92px;
+		height: 60px;
 		border-radius: 14px;
 		background: linear-gradient(135deg, var(--amber-grad-a), var(--amber-grad-b));
 		color: #fff;
 		font-weight: 700;
-		font-size: 22px;
-		box-shadow: 0 8px 20px rgba(201, 114, 16, 0.25);
-		margin-bottom: 22px;
+		font-size: 26px;
+		box-shadow: 0 8px 20px rgba(201, 114, 16, 0.28);
+		margin-bottom: 18px;
+	}
+	.eyebrow {
+		display: inline-block;
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--warn-ink);
+		background: var(--warn-bg);
+		border-radius: 999px;
+		padding: 5px 10px;
+		margin-bottom: 12px;
 	}
 	h1 {
 		font-size: 32px;

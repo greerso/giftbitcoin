@@ -10,6 +10,8 @@ import {
 	claimKdfNoPass,
 	claimKdfPassphrase,
 	bytesToHex,
+	bytesToB64url,
+	hexToBytesStrict,
 	type ClaimKdf
 } from './keys';
 import { buildGiftPayment, descriptorString, type GiftPayment } from './gift-script';
@@ -32,8 +34,11 @@ export interface CreateGiftInput {
 export interface CreatedGift {
 	claimSecret: Uint8Array;
 	claimSecretHex: string;
+	/** base64url (unpadded) — the SPEC §5.3/§5.4 on-wire form for packages/links */
+	claimSecretB64url: string;
 	refundSecret?: Uint8Array;
 	refundSecretHex?: string;
+	refundSecretB64url?: string;
 	passphraseRequired: boolean;
 	kdf: ClaimKdf;
 	claimPriv: Uint8Array;
@@ -89,8 +94,10 @@ export async function createGift(input: CreateGiftInput): Promise<CreatedGift> {
 	return {
 		claimSecret,
 		claimSecretHex: bytesToHex(claimSecret),
+		claimSecretB64url: bytesToB64url(claimSecret),
 		refundSecret,
 		refundSecretHex: refundSecret ? bytesToHex(refundSecret) : undefined,
+		refundSecretB64url: refundSecret ? bytesToB64url(refundSecret) : undefined,
 		passphraseRequired,
 		kdf,
 		claimPriv,
@@ -106,4 +113,63 @@ export async function createGift(input: CreateGiftInput): Promise<CreatedGift> {
 			payment.nums_xonly
 		)
 	};
+}
+
+export interface GiftScriptFields {
+	C_xonly: string;
+	R_xonly: string;
+	T: number;
+	nums_xonly: string;
+	address: string;
+	script_pub_key?: string;
+}
+
+export interface VerifyResult {
+	ok: boolean;
+	errors: string[];
+}
+
+/**
+ * SPEC §5.3 integrity check: re-derive the claim pubkey C from the secret
+ * (+ passphrase) and rebuild the Taproot address from the package's script
+ * fields, confirming both match. Run before showing "Ready to gift" and again
+ * when a claim link/package loads. A mismatch means the package is corrupt or
+ * the passphrase is wrong — never spend/fund against it.
+ */
+export async function verifyGiftPackage(input: {
+	secret: Uint8Array;
+	passphrase?: string;
+	passphraseRequired: boolean;
+	script: GiftScriptFields;
+	network?: typeof btc.TEST_NETWORK | typeof btc.NETWORK;
+}): Promise<VerifyResult> {
+	const errors: string[] = [];
+	try {
+		const claimPriv = input.passphraseRequired
+			? await claimPrivFromPassphrase(input.secret, input.passphrase ?? '')
+			: claimPrivFromSecret(input.secret);
+		const C = xOnlyFromPriv(claimPriv);
+		if (bytesToHex(C) !== input.script.C_xonly) {
+			errors.push('claim pubkey C does not derive from this secret/passphrase');
+		}
+		const R = hexToBytesStrict(input.script.R_xonly, 32);
+		const payment = buildGiftPayment({
+			C,
+			R,
+			T: input.script.T,
+			network: input.network ?? btc.TEST_NETWORK
+		});
+		if (payment.address !== input.script.address) {
+			errors.push('address does not match the derived script');
+		}
+		if (input.script.script_pub_key && payment.scriptPubKeyHex !== input.script.script_pub_key) {
+			errors.push('scriptPubKey does not match the derived script');
+		}
+		if (payment.nums_xonly !== input.script.nums_xonly) {
+			errors.push('NUMS internal key mismatch');
+		}
+	} catch (e) {
+		errors.push(e instanceof Error ? e.message : String(e));
+	}
+	return { ok: errors.length === 0, errors };
 }

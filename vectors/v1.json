@@ -17,7 +17,7 @@
       "m_kib": 65536,
       "t": 3,
       "p": 1,
-      "password": "passphrase UTF-8",
+      "password": "passphrase UTF-8 NFC-normalized",
       "salt": "claim_secret 32 bytes"
     },
     "refund": {
@@ -26,14 +26,27 @@
       "salt": "empty"
     }
   },
+  "scalarize": {
+    "label": "btcgiftcard/v1/scalar",
+    "rule": "if x==0 or x>=n: b' = SHA256(label || b); repeat"
+  },
   "sample_gift": {
     "claim_secret": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
     "refund_secret": "ff0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
     "T": 12960,
     "C_xonly": "bd2e8d6097e868f142b34c002454020791a84b62540160c8017bf14c45a78a01",
     "R_xonly": "2ab42aebcb3799cdbbb2c4249d233e72c7deb5a1549a3f22aeda8d167f782d7e",
-    "address": "tb1puvqel5w26fxu3he86r2za8jlhuw334938uue02wcx9ayf6znlahsj8zam4",
-    "script_pub_key": "5120e3019fd1cad24dc8df27d0d42e9e5fbf1d18d4b13f3997a9d8317a44e853ff6f",
-    "nums_xonly": "92ad1b6550ec770c856c0d2d73c770cd1d3ae50262d3fd0df7d85511f9064ef9"
+    "address": "tb1pr3ymmzwt7sal00y0rrpmj55sypj9u47ph7d2ad7fjad9ld9vz9vsw72u3u",
+    "script_pub_key": "51201c49bd89cbf43bf7bc8f18c3b9529020645e57c1bf9aaeb7c9975a5fb4ac1159",
+    "nums_xonly": "92ad1b6550ec770c856c0d2d73c770cd1d3ae50262d3fd0df7d85511f9064ef9",
+    "claim_leaf": "20bd2e8d6097e868f142b34c002454020791a84b62540160c8017bf14c45a78a01ac",
+    "expiry_leaf": "02a032b269202ab42aebcb3799cdbbb2c4249d233e72c7deb5a1549a3f22aeda8d167f782d7eac",
+    "descriptor": "tr(92ad1b6550ec770c856c0d2d73c770cd1d3ae50262d3fd0df7d85511f9064ef9,{pk(bd2e8d6097e868f142b34c002454020791a84b62540160c8017bf14c45a78a01),and_v(v:older(12960),pk(2ab42aebcb3799cdbbb2c4249d233e72c7deb5a1549a3f22aeda8d167f782d7e))})"
+  },
+  "sample_gift_passphrase": {
+    "claim_secret": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "passphrase": "correct horse battery staple",
+    "claim_priv": "6ed12d7d594a6ae56c7ad1725982ae0d41317bd2b239dd1e0916d913d4da0757",
+    "C_xonly": "40fb485486cda2db1c237131f301b762b2e0707263414e7d56b8efc017227f7c"
   }
 }

@@ -1,5 +1,7 @@
 <script lang="ts">
+	import '$lib/styles/app.css';
 	import favicon from '$lib/assets/favicon.svg';
+	import { nav } from '$lib/nav.svelte';
 	let { children } = $props();
 </script>
 
@@ -10,82 +12,178 @@
 </svelte:head>
 
 <div class="app">
-	<header class="banner">Bitcoin testnet4 only — no real value</header>
-	<nav>
-		<a href="/">Home</a>
-		<a href="/create">Create</a>
-		<a href="/c">Claim</a>
-		<a href="/recover">Recover</a>
-		<a href="/help">Help</a>
-	</nav>
+	<div class="strip">Test mode — bitcoin on this site has no real value</div>
+
+	<header>
+		{#if nav.back}
+			<button class="back" onclick={nav.back} aria-label="Back">←</button>
+		{/if}
+		<a class="brand" href="/">
+			<span class="mark">₿</span>
+			<span class="wordmark">giftbitcoin<span class="tld">.app</span></span>
+		</a>
+		<div class="spacer"></div>
+		<nav class="top-links">
+			<a href="/help">Help</a>
+			<a href="/recover">Recover a gift</a>
+		</nav>
+	</header>
+
 	<main>
-		{@render children()}
+		<div class="content">
+			{#if nav.stepLabel}
+				<div class="step-label">{nav.stepLabel}</div>
+			{/if}
+			{@render children()}
+		</div>
 	</main>
+
 	<footer>
-		<p>
-			Gift Bitcoin (giftbitcoin.app, Bitcoin testnet4) is non-custodial software. Share packages and
-			claim links are bearer instruments. The website cannot reverse transactions or restore lost
-			links. Optional project tip is separate from the gift vault.
-		</p>
+		<div class="foot-note">
+			A gift link is a bearer instrument, like cash. Lost links can't be recovered by anyone.
+		</div>
+		<div class="foot-links">
+			<a href="/help">Help</a>
+			<a href="/recover">Recover</a>
+		</div>
 	</footer>
 </div>
 
 <style>
-	:global(body) {
-		margin: 0;
-		font-family:
-			system-ui,
-			-apple-system,
-			Segoe UI,
-			Roboto,
-			sans-serif;
-		line-height: 1.5;
-		color: #0f172a;
-		background: #f8fafc;
-	}
 	.app {
-		min-height: 100vh;
+		min-height: 100dvh;
 		display: flex;
 		flex-direction: column;
+		background: var(--surface);
 	}
-	.banner {
-		background: #b45309;
-		color: #fff;
+	.strip {
+		flex: none;
+		background: var(--strip-bg);
+		color: var(--strip-ink);
+		font-size: 11.5px;
+		font-weight: 500;
 		text-align: center;
-		padding: 0.5rem 1rem;
-		font-weight: 600;
-		font-size: 0.9rem;
+		padding: 6px 12px;
+		letter-spacing: 0.02em;
 	}
-	nav {
+	header {
+		flex: none;
 		display: flex;
-		gap: 1rem;
-		padding: 0.75rem 1.25rem;
-		background: #0f172a;
+		align-items: center;
+		gap: 12px;
+		padding: 14px 20px;
+		border-bottom: 1px solid var(--divider);
+		background: var(--surface);
 	}
-	nav a {
-		color: #e2e8f0;
+	.back {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 34px;
+		height: 34px;
+		border: 1px solid var(--border-strong);
+		border-radius: 10px;
+		background: #fff;
+		color: var(--muted-2);
+		font-size: 16px;
+		cursor: pointer;
+		flex: none;
+		padding: 0;
+	}
+	.back:hover {
+		background: #f3eee3;
+	}
+	.brand {
+		display: flex;
+		align-items: center;
+		gap: 8px;
 		text-decoration: none;
+		color: var(--ink);
+	}
+	.brand:hover {
+		text-decoration: none;
+	}
+	.mark {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 26px;
+		height: 20px;
+		border-radius: 6px;
+		background: var(--amber);
+		color: #fff;
+		font-weight: 700;
+		font-size: 12px;
+	}
+	.wordmark {
+		font-family: var(--font-head);
+		font-weight: 600;
+		font-size: 16.5px;
+		letter-spacing: -0.01em;
+	}
+	.tld {
+		color: var(--tan);
 		font-weight: 500;
 	}
-	nav a:hover {
-		color: #fff;
+	.spacer {
+		flex: 1;
+	}
+	.top-links {
+		display: none;
+		gap: 22px;
+		font-size: 14px;
+		font-weight: 500;
+	}
+	.top-links a {
+		color: var(--muted);
+	}
+	.top-links a:hover {
+		color: var(--ink);
+		text-decoration: none;
 	}
 	main {
 		flex: 1;
-		max-width: 40rem;
+		overflow-y: auto;
+	}
+	.content {
+		max-width: 560px;
 		margin: 0 auto;
-		padding: 1.5rem 1.25rem 3rem;
+		padding: 28px 20px 48px;
 		width: 100%;
-		box-sizing: border-box;
 	}
 	footer {
-		padding: 1rem 1.25rem;
-		background: #e2e8f0;
-		font-size: 0.8rem;
-		color: #475569;
+		flex: none;
+		border-top: 1px solid var(--divider);
+		padding: 12px 20px;
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 12px;
+		background: var(--surface);
 	}
-	footer p {
-		max-width: 40rem;
-		margin: 0 auto;
+	.foot-note {
+		font-size: 11px;
+		color: var(--tan);
+		line-height: 1.45;
+		max-width: 70%;
+	}
+	.foot-links {
+		display: flex;
+		gap: 14px;
+		font-size: 12px;
+		font-weight: 600;
+		flex: none;
+	}
+	.foot-links a {
+		color: var(--muted);
+	}
+	.foot-links a:hover {
+		color: var(--ink);
+		text-decoration: none;
+	}
+	@media (min-width: 720px) {
+		.top-links {
+			display: flex;
+		}
 	}
 </style>

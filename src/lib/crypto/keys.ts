@@ -4,11 +4,19 @@
 import { hkdf } from '@noble/hashes/hkdf';
 import { sha256 } from '@noble/hashes/sha2';
 import { schnorr } from '@noble/curves/secp256k1';
+import { base64urlnopad } from '@scure/base';
 import { argon2id } from 'hash-wasm';
 import { scalarize } from './scalarize';
 
 const CLAIM_INFO = new TextEncoder().encode('btcgiftcard/v1/claim');
 const REFUND_INFO = new TextEncoder().encode('btcgiftcard/v1/refund');
+
+/** SPEC §4.2.1: claim_secret / refund_secret are fixed at 32 bytes. */
+function assertLen(b: Uint8Array, n: number, name: string): void {
+	if (b.length !== n) {
+		throw new Error(`${name} must be ${n} bytes, got ${b.length}`);
+	}
+}
 
 export type ClaimKdf =
 	| { name: 'hkdf-sha256'; info: 'btcgiftcard/v1/claim' }
@@ -22,8 +30,8 @@ export function randomSecret(bytes = 32): Uint8Array {
 
 /** No-passphrase claim private key */
 export function claimPrivFromSecret(claimSecret: Uint8Array): Uint8Array {
-	const ikm = claimSecret;
-	const raw = hkdf(sha256, ikm, undefined, CLAIM_INFO, 32);
+	assertLen(claimSecret, 32, 'claim_secret');
+	const raw = hkdf(sha256, claimSecret, undefined, CLAIM_INFO, 32);
 	return scalarize(raw);
 }
 
@@ -32,8 +40,15 @@ export async function claimPrivFromPassphrase(
 	claimSecret: Uint8Array,
 	passphrase: string
 ): Promise<Uint8Array> {
+	assertLen(claimSecret, 32, 'claim_secret');
+	// NFC-normalize so the same visual passphrase composed differently across
+	// platforms (e.g. macOS NFD vs NFC "é") derives the same key.
+	const normalized = passphrase.normalize('NFC');
+	if (normalized.length === 0) {
+		throw new Error('passphrase must not be empty');
+	}
 	const hashHex = await argon2id({
-		password: passphrase,
+		password: normalized,
 		salt: claimSecret,
 		parallelism: 1,
 		iterations: 3,
@@ -46,6 +61,7 @@ export async function claimPrivFromPassphrase(
 }
 
 export function refundPrivFromSecret(refundSecret: Uint8Array): Uint8Array {
+	assertLen(refundSecret, 32, 'refund_secret');
 	const raw = hkdf(sha256, refundSecret, undefined, REFUND_INFO, 32);
 	return scalarize(raw);
 }
@@ -77,11 +93,31 @@ export function bytesToHex(b: Uint8Array): string {
 		.join('');
 }
 
-export function hexToBytesStrict(hex: string): Uint8Array {
+export function hexToBytesStrict(hex: string, expectedBytes?: number): Uint8Array {
+	// parseInt('zz',16) is NaN which coerces to 0 in a Uint8Array — so an unchecked
+	// decoder turns a corrupted claim link into a *wrong* key that looks valid.
+	// Reject anything that is not clean, even-length hex (of the expected length).
+	if (!/^[0-9a-fA-F]*$/.test(hex)) throw new Error('invalid hex: non-hex characters');
 	if (hex.length % 2) throw new Error('odd hex length');
 	const out = new Uint8Array(hex.length / 2);
 	for (let i = 0; i < out.length; i++) {
 		out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+	}
+	if (expectedBytes !== undefined && out.length !== expectedBytes) {
+		throw new Error(`expected ${expectedBytes} bytes, got ${out.length}`);
+	}
+	return out;
+}
+
+/** base64url (unpadded) per SPEC §5.3/§5.4 — the on-wire encoding for secrets. */
+export function bytesToB64url(b: Uint8Array): string {
+	return base64urlnopad.encode(b);
+}
+
+export function b64urlToBytes(s: string, expectedBytes?: number): Uint8Array {
+	const out = base64urlnopad.decode(s); // throws on invalid alphabet
+	if (expectedBytes !== undefined && out.length !== expectedBytes) {
+		throw new Error(`expected ${expectedBytes} bytes, got ${out.length}`);
 	}
 	return out;
 }

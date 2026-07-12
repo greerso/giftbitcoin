@@ -3,7 +3,7 @@
  */
 import { sha256 } from '@noble/hashes/sha2';
 import { schnorr } from '@noble/curves/secp256k1';
-import { bytesToHex, hexToBytesStrict } from './keys';
+import { bytesToHex } from './keys';
 
 const SEED = new TextEncoder().encode('BTCGiftcard/v1/NUMS');
 
@@ -50,8 +50,4 @@ export function numsXOnly(): Uint8Array {
 	}
 	numsCache = computed.xOnly;
 	return numsCache;
-}
-
-export function numsFromHex(hex: string = NUMS_XONLY_HEX): Uint8Array {
-	return hexToBytesStrict(hex);
 }

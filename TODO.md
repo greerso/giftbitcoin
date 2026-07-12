@@ -4,7 +4,7 @@
 
 Source of truth for backlog items.
 
-- Spec: [SPEC.md](./SPEC.md) v0.2.6
+- Spec: [SPEC.md](./SPEC.md) v0.3.0
 - Competitive: [docs/COMPETITIVE-LANDSCAPE.md](./docs/COMPETITIVE-LANDSCAPE.md)  
 - Wallets + buy BTC: [docs/WALLETS-AND-ONRAMP-2026.md](./docs/WALLETS-AND-ONRAMP-2026.md)
 
@@ -12,17 +12,24 @@ Source of truth for backlog items.
 
 ## Session status — 2026-07-12 (send-mechanism implementation)
 
-**Done:** send mechanism implemented (PR #12): SPEC v0.3.0 amendments, generated 4-word EFF
-passphrases, delivery choice + share tier (Web Share/WhatsApp/SMS), 3-segment QR fragment,
-claim normalization + retry-raw back-compat, /api/send Worker (Turnstile + address recompute
-+ esplora fail-closed), QR rendering (funding + claim link).
+**Done:** send mechanism implemented (**PR #14**, squash `41e7c40`): SPEC v0.3.0 amendments,
+generated 4-word EFF passphrases, delivery choice + share tier (Web Share/WhatsApp/SMS),
+3-segment QR fragment, claim normalization + retry-raw back-compat, /api/send Worker
+(Turnstile + address recompute + esplora fail-closed), QR rendering (funding + claim link).
+Issue **#13** closed. Coolify redeployed on main; Worker live on `giftbitcoin.app/api/send`.
+Real Turnstile widget `giftbitcoin-send` created; site key in `src/config/send.ts`, secret
+via `wrangler secret put TURNSTILE_SECRET`.
 
-**Follow-ups (not started):**
-- [ ] Deploy the send Worker (docs/DEPLOY.md §Send relay): email onboarding, real Turnstile
-      keys, `wrangler deploy`, live smoke test.
-- [ ] Manual QA: 3-segment QR density scan test on real phone cameras (spec gate before
-      promoting the variant). Real three-segment claim link (with memo/names filled) is
-      ~1.6–1.9 KB, encoding to a 137×145-module QR at `ecc:'low'`.
+**Follow-ups:**
+- [ ] **Email Sending onboard** (blocked): `wrangler email sending enable giftbitcoin.app`
+      and API list both return **Unauthorized 2036** (wrangler OAuth + `~/.cloudflare/token`).
+      Danny must onboard in CF dashboard: **Compute → Email Service → Email Sending →
+      Onboard Domain → giftbitcoin.app** (adds SPF/DKIM). Until then `EMAIL.send` fails closed
+      → UI shows copy-link fallback.
+- [ ] Live smoke after email onboard: fund testnet4 gift, email to **unverified external**
+      inbox, confirm 3-segment POST returns 400.
+- [ ] Manual QA: 3-segment QR density scan on real phone cameras (~1.6–1.9 KB → 137×145
+      modules at `ecc:'low'`).
 
 ---
 

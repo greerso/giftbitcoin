@@ -10,12 +10,19 @@ Source of truth for backlog items.
 
 ---
 
-## Session status — 2026-07-12 (send-mechanism design)
+## Session status — 2026-07-12 (send-mechanism implementation)
 
-**Done:** send-mechanism design spec merged to main (#11, `docs/superpowers/specs/2026-07-12-send-mechanism-design.md`) — rev 2 after full critical assessment (19 findings applied + 20-agent verification). Decisions: generated-only 4-word EFF passphrases, Tier 1 Web Share / Tier 2 email via **Cloudflare Worker + Email Service**, three-segment QR fragment variant.
+**Done:** send mechanism implemented (PR #12): SPEC v0.3.0 amendments, generated 4-word EFF
+passphrases, delivery choice + share tier (Web Share/WhatsApp/SMS), 3-segment QR fragment,
+claim normalization + retry-raw back-compat, /api/send Worker (Turnstile + address recompute
++ esplora fail-closed), QR rendering (funding + claim link).
 
-**Next (not started):**
-- [ ] Implement send mechanism per the spec: SPEC amendments first (§5.1/§10.1/§13/§14.3.3 carve-outs, CSP Turnstile entry, trust-model row), then create-flow delivery choice, shared 3-segment parser, claim normalization + retry-raw back-compat, Worker (`/api/send` + Turnstile + address recompute + esplora fail-closed), claim-link QR rendering (new; no QR lib in repo yet).
+**Follow-ups (not started):**
+- [ ] Deploy the send Worker (docs/DEPLOY.md §Send relay): email onboarding, real Turnstile
+      keys, `wrangler deploy`, live smoke test.
+- [ ] Manual QA: 3-segment QR density scan test on real phone cameras (spec gate before
+      promoting the variant). Real three-segment claim link (with memo/names filled) is
+      ~1.6–1.9 KB, encoding to a 137×145-module QR at `ecc:'low'`.
 
 ---
 
@@ -42,7 +49,6 @@ Source of truth for backlog items.
 - **Refund / expiry broadcast** (custom CSV leaf needs a manual witness — scure
   can't auto-finalize it): recover page is status-check + honest note only. **v1.1 (SPEC §14.4).**
 - **Static offline claim HTML** — not built. **v1.1 (SPEC §14.4).**
-- **QR code** on the pay screen (placeholder for now; needs a QR encoder).
 - **Project tip is unpayable** — `PROJECT_TIP_ADDRESS_TESTNET` is empty; tip is
   suggested-only. Set the release-config address or hide the control.
 - **User-selectable indexer UI** — esplora base is localStorage-overridable in code

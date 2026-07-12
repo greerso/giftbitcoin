@@ -352,7 +352,8 @@
 			});
 			prep = next;
 			// SPEC §7.2.1.9: never broadcast amounts the user didn't approve. If the
-			// sweep grew (new UTXO confirmed) or the net shrank (fee rose), show the
+			// sweep changed in either direction (new UTXO confirmed, or one reorged
+			// out — hence !== and not >) or the net shrank (fee rose), show the
 			// updated review instead. A net increase at the same gross only favors
 			// the recipient, so it goes through.
 			if (next.grossSats !== reviewed.grossSats || next.netSats < reviewed.netSats) {

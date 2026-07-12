@@ -22,7 +22,10 @@ const config = {
 			mode: 'hash',
 			directives: {
 				'default-src': ['self'],
-				'script-src': ['self'],
+				// 'wasm-unsafe-eval' lets hash-wasm's Argon2id (the passphrase KDF) compile
+				// its WebAssembly module; it does NOT permit eval()/new Function() the way
+				// full 'unsafe-eval' would.
+				'script-src': ['self', 'wasm-unsafe-eval'],
 				'style-src': ['self', 'unsafe-inline'],
 				'img-src': ['self', 'data:'],
 				'font-src': ['self'],

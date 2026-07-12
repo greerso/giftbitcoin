@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { goto } from '$app/navigation';
+	import { goto, beforeNavigate } from '$app/navigation';
 	import { setNav, clearNav } from '$lib/nav.svelte';
 	import { createGift, type CreatedGift } from '$lib/crypto/create-gift';
 	import { buildPackages, fullClaimLink, type GiftPackages } from '$lib/gift-package';
@@ -63,11 +63,16 @@
 
 	$effect(() => {
 		if (step === 'c1') setNav(() => goto('/'), 'Step 1 of 3 · Your card');
-		else if (step === 'c3') setNav(() => (step = 'c1'), 'Step 2 of 3 · Pay');
+		else if (step === 'c3')
+			setNav(() => {
+				cancelPoll();
+				fundStatus = 'idle';
+				step = 'c1';
+			}, 'Step 2 of 3 · Pay');
 		else setNav(() => goto('/'), 'Step 3 of 3 · Share');
 	});
 
-	// Warn before leaving while a gift exists whose backup hasn't been saved (B1).
+	// Warn before a real page unload (close/refresh) while an un-backed-up gift exists.
 	$effect(() => {
 		const dirty = !!gift && !backedUp && step !== 'c1';
 		const handler = (e: BeforeUnloadEvent) => {
@@ -78,8 +83,25 @@
 		return () => window.removeEventListener('beforeunload', handler);
 	});
 
+	// SvelteKit client-side navigation (the header logo, Done, the back arrow) does
+	// NOT fire beforeunload — guard it too, or losing the page silently discards the
+	// only copy of the keys after the user may already have funded the address.
+	beforeNavigate((navigation) => {
+		if (gift && !backedUp && step !== 'c1') {
+			const leave = confirm(
+				"You haven't saved your gift backup yet. If you've already sent funds, leaving now means no one — including us — can recover them. Leave without saving?"
+			);
+			if (!leave) navigation.cancel();
+		}
+	});
+
+	function cancelPoll() {
+		pollGen += 1;
+	}
+
 	onDestroy(() => {
 		destroyed = true;
+		cancelPoll();
 		clearNav();
 	});
 
@@ -91,6 +113,7 @@
 		}
 		busy = true;
 		try {
+			cancelPoll(); // kill any poll from a prior address before (re)building
 			const key = { expiry: expiryDays, usePass: usePass && !!passphrase, pass: usePass ? passphrase : '' };
 			// Regenerate keys only if the security params changed — otherwise keep the
 			// existing (possibly-funded) address so a name tweak never orphans funds.
@@ -157,16 +180,18 @@
 	}
 
 	function markSent() {
+		if (!gift) return;
 		fundStatus = 'pending';
 		pollFails = 0;
 		pollGen += 1;
-		poll(pollGen);
+		// capture the address so a later regenerate can't retarget this poll
+		poll(pollGen, gift.payment.address);
 	}
 
-	async function poll(gen: number) {
-		if (!gift || destroyed || gen !== pollGen) return;
+	async function poll(gen: number, addr: string) {
+		if (destroyed || gen !== pollGen) return;
 		try {
-			const utxos = await getUtxos(gift.payment.address);
+			const utxos = await getUtxos(addr);
 			pollFails = 0;
 			const confirmed = confirmedValue(utxos);
 			if (confirmed > 0) {
@@ -178,7 +203,7 @@
 			pollFails += 1;
 		}
 		if (destroyed || gen !== pollGen) return;
-		setTimeout(() => poll(gen), 12_000);
+		setTimeout(() => poll(gen, addr), 12_000);
 	}
 
 	function download(name: string, obj: unknown) {

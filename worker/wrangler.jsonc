@@ -1,0 +1,21 @@
+// worker/wrangler.jsonc — the /api/send email relay (design doc 2026-07-12).
+// Deploy: npx wrangler deploy -c worker/wrangler.jsonc
+// Secrets: npx wrangler secret put TURNSTILE_SECRET -c worker/wrangler.jsonc
+{
+	"name": "giftbitcoin-send",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-07-01",
+	"routes": [{ "pattern": "giftbitcoin.app/api/send", "zone_name": "giftbitcoin.app" }],
+	"send_email": [{ "name": "EMAIL" }],
+	"vars": {
+		"ALLOWED_ORIGIN": "https://giftbitcoin.app",
+		"FROM_EMAIL": "gifts@giftbitcoin.app",
+		"ESPLORA_BASE": "https://mempool.space/testnet4/api"
+	},
+	"unsafe": {
+		"bindings": [
+			{ "type": "ratelimit", "name": "IP_LIMIT", "namespace_id": "1001", "simple": { "limit": 6, "period": 60 } },
+			{ "type": "ratelimit", "name": "ADDR_LIMIT", "namespace_id": "1002", "simple": { "limit": 3, "period": 60 } }
+		]
+	}
+}

@@ -9,6 +9,7 @@
 	<link rel="icon" href={favicon} />
 	<title>Gift Bitcoin (testnet) · giftbitcoin.app</title>
 	<meta name="referrer" content="no-referrer" />
+	<meta name="theme-color" content="#C97210" />
 </svelte:head>
 
 <div class="app">

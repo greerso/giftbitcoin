@@ -196,7 +196,7 @@
 
 	async function submitAddr() {
 		const a = address.trim();
-		if (/^(bc1|[13])/.test(a) && !/^tb1/.test(a)) {
+		if (/^(bc1|[13])/i.test(a) && !/^tb1/i.test(a)) {
 			addrError = 'That looks like a mainnet address. This is a testnet gift — use a testnet address.';
 			return;
 		}
@@ -276,10 +276,30 @@
 	}
 
 	async function redeem() {
-		if (!prep || sending) return;
+		if (!prep || !g || sending) return;
 		sending = true;
 		prepError = '';
 		try {
+			// SPEC §6.3.6: re-fetch UTXOs and rebuild immediately before broadcast so a
+			// reorg / since-confirmed / since-spent change is reflected, not the stale tx.
+			const claimPriv = await deriveClaimPriv();
+			const C = xOnlyFromPriv(claimPriv);
+			const utxos = await getUtxos(g.address);
+			if (confirmedValue(utxos) <= 0) {
+				prepError = 'This gift is no longer funded — it may have just been redeemed.';
+				return;
+			}
+			const feeRate = await recommendedFeeRate();
+			prep = buildClaimTx({
+				claimPriv,
+				C,
+				R: hexToBytesStrict(g.R_xonly, 32),
+				T: g.T,
+				utxos,
+				destAddress: address.trim(),
+				feeRate,
+				network: btc.TEST_NETWORK
+			});
 			sentTxid = await broadcastTx(prep.hex);
 			screen = 'r4';
 		} catch (e) {
@@ -293,6 +313,11 @@
 		prep ? fmtBtc(satsToBtc(prep.netSats)) + ' BTC (≈ ' + money(satsToBtc(prep.netSats) * price) + ')' : ''
 	);
 	const feeStr = $derived(prep ? money(satsToBtc(prep.feeSats) * price) : '');
+	// Real on-chain balance being swept — keeps gross − fee = net consistent, rather
+	// than the sender-claimed amount_expected_sats (which may over/understate it).
+	const grossStr = $derived(
+		prep ? fmtBtc(satsToBtc(prep.grossSats)) + ' BTC (≈ ' + money(satsToBtc(prep.grossSats) * price) + ')' : ''
+	);
 </script>
 
 {#if screen === 'loading'}
@@ -321,10 +346,14 @@
 			fromName={g.fromName}
 		/>
 	</div>
-	<div class="badge" class:warn={chainStatus === 'empty'}>
+	<button
+		class="badge"
+		class:warn={chainStatus === 'empty' || chainStatus === 'unknown'}
+		onclick={checkChain}
+	>
 		<span class="badge-dot"></span>
-		{#if chainStatus === 'ready'}Ready to redeem{:else if chainStatus === 'awaiting'}Funds confirming…{:else if chainStatus === 'empty'}Not funded yet{:else if chainStatus === 'checking'}Checking…{:else}Ready to redeem{/if}
-	</div>
+		{#if chainStatus === 'ready'}Ready to redeem{:else if chainStatus === 'awaiting'}Funds confirming…{:else if chainStatus === 'empty'}Not funded yet{:else if chainStatus === 'checking'}Checking…{:else}Couldn't reach the chain — tap to retry{/if}
+	</button>
 	<h2 class="h2">Someone sent you bitcoin</h2>
 	<p class="lede">
 		New to bitcoin? That’s OK — we’ll walk you through it, step by step. It takes about two minutes.
@@ -394,7 +423,7 @@
 	{:else if prep}
 		<div class="review card">
 			<div class="rrow">
-				<span class="rk">Gift card</span><span class="rv">{usdDisplay} · {btcStr} BTC</span>
+				<span class="rk">Gift balance</span><span class="rv">{grossStr}</span>
 			</div>
 			<div class="rrow">
 				<span class="rk">Network fee</span><span class="rv">− {feeStr}</span>
@@ -406,6 +435,12 @@
 				<span class="rk">To</span><span class="rv mono small">{truncMiddle(address.trim())}</span>
 			</div>
 		</div>
+		{#if g.amountSats && prep.grossSats < g.amountSats}
+			<div class="warn-box mb">
+				This gift holds less than the sender intended ({usdDisplay}). You’ll still receive the full
+				confirmed balance shown above.
+			</div>
+		{/if}
 		{#if isExchangeDest}
 			<div class="info-box mb">
 				Exchanges hold bitcoin on your behalf. Someday, you might like moving it to a wallet only you
@@ -413,8 +448,8 @@
 			</div>
 		{/if}
 		<p class="fine">
-			Redeeming sends the full amount in one transaction. Afterwards, the gift link is empty and can’t
-			be used again.
+			Redeeming sweeps the confirmed balance in one transaction. If any funds are still confirming,
+			keep the link — you can redeem those once they confirm.
 		</p>
 		<button class="btn btn-primary" disabled={sending} onclick={redeem}>
 			{sending ? 'Sending…' : 'Redeem my bitcoin'}
@@ -437,7 +472,10 @@
 			Heads up: exchanges can take 10–60 minutes to show incoming bitcoin. It's normal.
 		</div>
 	{/if}
-	<p class="fine">This gift card has now been redeemed — the link is empty.</p>
+	<p class="fine">
+		The confirmed balance has been sent. If any funds were still confirming, keep the link — you can
+		redeem them once they confirm.
+	</p>
 	<button class="done-link" onclick={() => goto('/')}>Done</button>
 {/if}
 
@@ -472,9 +510,12 @@
 		color: var(--success);
 		font-size: 13px;
 		font-weight: 600;
+		border: none;
 		border-radius: 999px;
 		padding: 6px 14px;
 		margin-bottom: 16px;
+		font-family: var(--font-body);
+		cursor: pointer;
 	}
 	.badge.warn {
 		background: var(--warn-bg);

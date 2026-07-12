@@ -23,7 +23,9 @@ export interface Utxo {
 }
 
 export async function getUtxos(address: string): Promise<Utxo[]> {
-	const r = await fetch(`${esploraBase()}/address/${address}/utxo`);
+	// encodeURIComponent: the claim page fetches the address from an untrusted link
+	// fragment before package verification, so keep it from steering the URL path.
+	const r = await fetch(`${esploraBase()}/address/${encodeURIComponent(address)}/utxo`);
 	if (!r.ok) throw new Error(`indexer error ${r.status}`);
 	return r.json();
 }

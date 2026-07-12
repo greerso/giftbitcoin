@@ -63,10 +63,11 @@
 	}
 </script>
 
-<h2 class="h2">Recover an unredeemed gift</h2>
+<h2 class="h2">Check an unredeemed gift</h2>
 <p class="lede">
-	If your gift card wasn’t redeemed before it expired, you can send the bitcoin back to yourself.
-	Paste your gift link or open your backup file.
+	Paste your gift link or backup file to see whether it’s still funded. Reclaiming the bitcoin to
+	your own wallet after the expiry timelock is coming in a later build — for now this confirms the
+	status; your refund key stays safe in your backup.
 </p>
 <textarea bind:value={input} placeholder="https://giftbitcoin.app/c#…  (or paste your backup JSON)" rows="3" class="mono"></textarea>
 {#if error}<p class="err">{error}</p>{/if}

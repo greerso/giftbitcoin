@@ -4,9 +4,41 @@
 
 Source of truth for backlog items.
 
-- Spec: [SPEC.md](./SPEC.md) v0.2.4  
+- Spec: [SPEC.md](./SPEC.md) v0.2.5
 - Competitive: [docs/COMPETITIVE-LANDSCAPE.md](./docs/COMPETITIVE-LANDSCAPE.md)  
 - Wallets + buy BTC: [docs/WALLETS-AND-ONRAMP-2026.md](./docs/WALLETS-AND-ONRAMP-2026.md)
+
+---
+
+## Session status — 2026-07-11 (design implementation + crypto hardening)
+
+**Branch:** `feature/giftbitcoin-design`
+
+**Done this session:**
+- Critical-assessment of the crypto core + deploy → fixed. Biggest: expiry tapleaf
+  was `<T> CSV DROP …` but the emitted descriptor is `and_v(v:older(T),pk(R))` =
+  `<T> CSV VERIFY …` (different address → broken descriptor recovery). Now VERIFY;
+  golden vector regenerated + verified against rust-miniscript.
+- base64url secrets (SPEC §5.3/§5.4), strict hex validation, 32-byte guards, NFC
+  passphrase, on-curve R validation, verifyGiftPackage integrity check.
+- Strict CSP (SvelteKit hash mode), nginx header-inheritance fix, self-hosted fonts.
+- Full GiftBitcoin design implemented: home / create / claim / help / recover, four
+  card designs, live USD pricing, real testnet address generation, SPEC-conformant
+  packages (share_card / full_backup / watch_only), real Esplora fund-watch, real
+  claim-path build+broadcast. Tests 10 → 36.
+
+**Deferred (tracked, not done):**
+- **Real claim broadcast** is implemented but only unit-tested — no live testnet4
+  faucet e2e this session. Needs an on-faucet end-to-end run before mainnet talk.
+- **Refund / expiry broadcast** (custom CSV leaf needs a manual witness — scure
+  can't auto-finalize it): recover page is status-check + honest note only.
+- **Static offline claim HTML** (SPEC §5.5 / §14.3.2 mandatory v1 deliverable) — not built.
+- **QR code** on the pay screen (placeholder for now; needs a QR encoder).
+- **Project tip is unpayable** — `PROJECT_TIP_ADDRESS_TESTNET` is empty; tip is
+  suggested-only. Set the release-config address or hide the control.
+- **User-selectable indexer UI** — esplora base is localStorage-overridable in code
+  but there's no settings screen; custom hosts also need a CSP connect-src entry.
+- **Docker base images unpinned** + no reproducible-build doc (SPEC §13).
 
 ### Brand / domain / Coolify
 

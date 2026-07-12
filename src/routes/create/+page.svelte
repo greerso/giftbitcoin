@@ -3,7 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { setNav, clearNav } from '$lib/nav.svelte';
 	import { createGift, type CreatedGift } from '$lib/crypto/create-gift';
-	import { buildPackages, claimUrl, fullClaimLink, type GiftPackages } from '$lib/gift-package';
+	import { buildPackages, fullClaimLink, type GiftPackages } from '$lib/gift-package';
 	import { fetchBtcUsd, usdToBtc, usdToSats, satsToBtc, FALLBACK_BTC_USD } from '$lib/pricing';
 	import { fmtBtc, money } from '$lib/format';
 	import { getUtxos, confirmedValue } from '$lib/esplora';
@@ -22,7 +22,6 @@
 	let fromName = $state('');
 	let message = $state('');
 	let advOpen = $state(false);
-	let speed = $state('normal');
 	let tipPct = $state(3);
 	let expiryDays = $state<30 | 90 | 180>(90);
 	let usePass = $state(false);
@@ -32,31 +31,31 @@
 	let error = $state('');
 	let gift = $state<CreatedGift | null>(null);
 	let packages = $state<GiftPackages | null>(null);
+	// key material only depends on expiry + passphrase; reuse the gift (and its
+	// possibly-funded address) when only cosmetic fields change (B2).
+	let giftKey = $state<{ expiry: number; usePass: boolean; pass: string } | null>(null);
 	let fundStatus = $state<'idle' | 'pending'>('idle');
+	let fundedSats = $state(0);
+	let pollFails = $state(0);
 	let copiedAddr = $state(false);
 	let linkCopied = $state(false);
+	let linkCopyFailed = $state(false);
 	let backedUp = $state(false);
-	let pollTimer: ReturnType<typeof setTimeout> | null = null;
+
+	let pollGen = 0;
+	let destroyed = false;
 
 	const PRESETS = ['25', '50', '100', '250'];
-	const SPEEDS = [
-		{ id: 'economy', name: 'Economy', rate: 2, eta: '2–6 hours' },
-		{ id: 'normal', name: 'Standard', rate: 6, eta: '~30 minutes' },
-		{ id: 'priority', name: 'Priority', rate: 15, eta: '~10 minutes' }
-	];
-
 	const usd = $derived(parseFloat(usdAmount) || 0);
 	const sats = $derived(usdToSats(usd, price));
 	const btcStr = $derived(fmtBtc(usdToBtc(usd, price)));
 	const amountValid = $derived(usd > 0 && sats >= MIN_GIFT_SATS);
 	const tipUsd = $derived((usd * tipPct) / 100);
-	const totalUsd = $derived(usd + tipUsd);
-	const totalBtcStr = $derived(fmtBtc(usdToBtc(totalUsd, price)));
-	const speedObj = $derived(SPEEDS.find((s) => s.id === speed) ?? SPEEDS[1]);
-	const feeBtc = $derived((140 * speedObj.rate) / 1e8);
-	const feeEstStr = $derived(money(feeBtc * price) + ' (' + fmtBtc(feeBtc) + ' BTC)');
 	const usdDisplay = $derived(money(usd));
 	const isCustom = $derived(!PRESETS.includes(usdAmount));
+	const fundedBtcStr = $derived(fmtBtc(satsToBtc(fundedSats)));
+	const fundedUsd = $derived(money(satsToBtc(fundedSats) * price));
+	const underfunded = $derived(fundedSats > 0 && fundedSats < sats);
 
 	onMount(async () => {
 		price = await fetchBtcUsd();
@@ -68,8 +67,19 @@
 		else setNav(() => goto('/'), 'Step 3 of 3 · Share');
 	});
 
+	// Warn before leaving while a gift exists whose backup hasn't been saved (B1).
+	$effect(() => {
+		const dirty = !!gift && !backedUp && step !== 'c1';
+		const handler = (e: BeforeUnloadEvent) => {
+			e.preventDefault();
+			e.returnValue = '';
+		};
+		if (dirty) window.addEventListener('beforeunload', handler);
+		return () => window.removeEventListener('beforeunload', handler);
+	});
+
 	onDestroy(() => {
-		if (pollTimer) clearTimeout(pollTimer);
+		destroyed = true;
 		clearNav();
 	});
 
@@ -81,14 +91,26 @@
 		}
 		busy = true;
 		try {
-			const g = await createGift({
-				T: T_PRESETS[`days${expiryDays}` as 'days90'],
-				policy: 'refund_self',
-				passphrase: usePass && passphrase ? passphrase : undefined,
-				network: btc.TEST_NETWORK
-			});
-			const origin = window.location.origin;
-			packages = buildPackages(g, {
+			const key = { expiry: expiryDays, usePass: usePass && !!passphrase, pass: usePass ? passphrase : '' };
+			// Regenerate keys only if the security params changed — otherwise keep the
+			// existing (possibly-funded) address so a name tweak never orphans funds.
+			if (
+				!gift ||
+				!giftKey ||
+				giftKey.expiry !== key.expiry ||
+				giftKey.usePass !== key.usePass ||
+				giftKey.pass !== key.pass
+			) {
+				gift = await createGift({
+					T: T_PRESETS[`days${expiryDays}` as 'days90'],
+					policy: 'refund_self',
+					passphrase: usePass && passphrase ? passphrase : undefined,
+					network: btc.TEST_NETWORK
+				});
+				giftKey = key;
+				backedUp = false;
+			}
+			packages = buildPackages(gift, {
 				amountExpectedSats: sats,
 				tipSatsSuggested: usdToSats(tipUsd, price),
 				memo: message.trim() || undefined,
@@ -96,9 +118,8 @@
 				toName: toName.trim() || undefined,
 				cardDesign: design,
 				expiryDays,
-				origin
+				origin: window.location.origin
 			});
-			gift = g;
 			fundStatus = 'idle';
 			step = 'c3';
 		} catch (e) {
@@ -108,30 +129,56 @@
 		}
 	}
 
-	function copyAddr() {
+	async function copyAddr() {
 		if (!gift) return;
-		navigator.clipboard?.writeText(gift.payment.address).catch(() => {});
-		copiedAddr = true;
-		setTimeout(() => (copiedAddr = false), 1800);
+		try {
+			await navigator.clipboard.writeText(gift.payment.address);
+			copiedAddr = true;
+			setTimeout(() => (copiedAddr = false), 1800);
+		} catch {
+			copiedAddr = false; // address is already visible to select manually
+		}
+	}
+
+	const shareLink = $derived(
+		packages ? fullClaimLink(packages.share_card, window.location.origin) : ''
+	);
+
+	async function copyLink() {
+		if (!shareLink) return;
+		try {
+			await navigator.clipboard.writeText(shareLink);
+			linkCopied = true;
+			linkCopyFailed = false;
+			setTimeout(() => (linkCopied = false), 1800);
+		} catch {
+			linkCopyFailed = true; // reveal the link text for manual copy
+		}
 	}
 
 	function markSent() {
 		fundStatus = 'pending';
-		poll();
+		pollFails = 0;
+		pollGen += 1;
+		poll(pollGen);
 	}
 
-	async function poll() {
-		if (!gift) return;
+	async function poll(gen: number) {
+		if (!gift || destroyed || gen !== pollGen) return;
 		try {
 			const utxos = await getUtxos(gift.payment.address);
-			if (confirmedValue(utxos) > 0) {
+			pollFails = 0;
+			const confirmed = confirmedValue(utxos);
+			if (confirmed > 0) {
+				fundedSats = confirmed;
 				step = 'c4';
 				return;
 			}
 		} catch {
-			/* transient indexer error — keep polling */
+			pollFails += 1;
 		}
-		pollTimer = setTimeout(poll, 12_000);
+		if (destroyed || gen !== pollGen) return;
+		setTimeout(() => poll(gen), 12_000);
 	}
 
 	function download(name: string, obj: unknown) {
@@ -149,17 +196,6 @@
 		download('giftbitcoin-backup.json', packages.sender_full_backup);
 		backedUp = true;
 	}
-
-	const shareLink = $derived(
-		packages && gift ? fullClaimLink(packages.share_card, window.location.origin) : ''
-	);
-
-	function copyLink() {
-		if (!shareLink) return;
-		navigator.clipboard?.writeText(shareLink).catch(() => {});
-		linkCopied = true;
-		setTimeout(() => (linkCopied = false), 1800);
-	}
 </script>
 
 {#if step === 'c1'}
@@ -172,11 +208,7 @@
 	<div class="thumbs">
 		{#each CARD_DESIGNS as d}
 			<button class="thumb" onclick={() => (design = d.id)} aria-label={d.name}>
-				<span
-					class="thumb-face"
-					class:sel={d.id === design}
-					style="background:{d.bg}"
-				></span>
+				<span class="thumb-face" class:sel={d.id === design} style="background:{d.bg}"></span>
 				<span class="thumb-name" class:sel={d.id === design}>{d.name}</span>
 			</button>
 		{/each}
@@ -191,12 +223,7 @@
 	</div>
 	<div class="usd-box" class:active={isCustom}>
 		<span class="usd-sign">$</span>
-		<input
-			class="usd-input"
-			bind:value={usdAmount}
-			inputmode="decimal"
-			placeholder="Enter any amount"
-		/>
+		<input class="usd-input" bind:value={usdAmount} inputmode="decimal" placeholder="Enter any amount" />
 		<span class="usd-unit">USD</span>
 	</div>
 	<p class="amount-note">
@@ -217,18 +244,11 @@
 	{#if advOpen}
 		<div class="adv">
 			<div class="card">
-				<div class="adv-title">Network fee speed <span class="muted">— when it's redeemed</span></div>
-				<div class="chips tight">
-					{#each SPEEDS as s}
-						<button class="chip" class:on={speed === s.id} onclick={() => (speed = s.id)}>{s.name}</button>
-					{/each}
+				<div class="adv-title">Project tip <span class="muted">— suggested</span></div>
+				<div class="adv-note mb">
+					Currently {tipPct}% ({money(tipUsd)}). Recorded in your backup for the open-source project —
+					tip collection isn't wired up in this testnet build, so you only fund the gift itself.
 				</div>
-				<div class="adv-note">Estimated fee: <strong>{feeEstStr}</strong> · confirms in {speedObj.eta}</div>
-			</div>
-
-			<div class="card">
-				<div class="adv-title">Project tip</div>
-				<div class="adv-note mb">Currently {tipPct}% ({money(tipUsd)}) — keeps giftbitcoin free and running.</div>
 				<div class="chips tight">
 					{#each [0, 1, 3, 5] as t}
 						<button class="chip" class:on={tipPct === t} onclick={() => (tipPct = t)}>{t}%</button>
@@ -266,15 +286,29 @@
 	</button>
 {/if}
 
-{#if step === 'c3' && gift}
+{#if step === 'c3' && gift && packages}
 	<h2 class="h2">Pay for your gift card</h2>
-	<p class="lede">
-		Total <strong>{money(totalUsd)}</strong> — send at least
-		<strong>{fmtBtc(usdToBtc(usd, price))} BTC</strong> to this address (testnet).
-	</p>
+	<p class="lede">Send at least <strong>{btcStr} BTC</strong> to this address (testnet).</p>
+
+	<div class="warn-box save-first">
+		<strong>Save your gift before you send.</strong> These keys live only in this page until you
+		download them — if you lose the page now, the bitcoin can't be recovered by anyone.
+		<div class="save-actions">
+			<button class="btn btn-primary" onclick={downloadBackup}>
+				{backedUp ? 'Backup saved ✓' : 'Download backup'}
+			</button>
+			<button class="btn btn-secondary" onclick={copyLink}>
+				{linkCopied ? 'Link copied ✓' : 'Copy gift link'}
+			</button>
+		</div>
+		{#if linkCopyFailed}
+			<div class="copy-fallback mono">{shareLink}</div>
+			<div class="fallback-note">Couldn't reach the clipboard — select the link above and copy it.</div>
+		{/if}
+	</div>
 
 	<div class="pay-card">
-		<div class="qr" aria-hidden="true">QR<br />soon</div>
+		<div class="qr" aria-hidden="true">address<br />below</div>
 		<div class="pay-addr">
 			<div class="mono addr">{gift.payment.address}</div>
 			<button class="btn-copy" onclick={copyAddr}>{copiedAddr ? 'Copied ✓' : 'Copy address'}</button>
@@ -282,25 +316,20 @@
 		</div>
 	</div>
 
-	<div class="label-caps mt">How will you pay?</div>
-	<div class="fund-opts">
-		{#each [{ id: 'have', title: 'I already have bitcoin', desc: 'Send from your own wallet or exchange' }, { id: 'buy', title: 'I need to buy some first', desc: 'Buy on any exchange, then send it here' }, { id: 'guide', title: 'Walk me through it', desc: 'Step-by-step with a testnet faucet' }] as f}
-			<div class="fund-opt card">
-				<div class="fund-title">{f.title}</div>
-				<div class="fund-desc">{f.desc}</div>
-			</div>
-		{/each}
-	</div>
-
 	{#if fundStatus === 'idle'}
-		<button class="btn btn-primary" onclick={markSent}>I've sent it</button>
+		<button class="btn btn-primary" disabled={!backedUp} onclick={markSent}>
+			{backedUp ? "I've sent it" : 'Save your backup first ↑'}
+		</button>
 		<p class="tiny-note">Testnet coins have no value — fund the address from a testnet4 faucet.</p>
 	{:else}
 		<div class="pending">
 			<div class="pulse"></div>
 			<div>
-				<strong>Waiting for 1 confirmation…</strong> usually about 10 minutes. You can leave this page —
-				your gift card will be ready when you return. Watching the address on the chain.
+				<strong>Waiting for 1 confirmation…</strong> usually about 10 minutes. Watching the address on the
+				chain — keep this page open (your keys are only saved in your downloaded backup).
+				{#if pollFails >= 3}
+					<div class="poll-warn">Can't reach the chain indexer right now — still retrying.</div>
+				{/if}
 			</div>
 		</div>
 	{/if}
@@ -309,16 +338,16 @@
 {#if step === 'c4' && gift && packages}
 	<div class="success-check">✓</div>
 	<h2 class="h2">Your gift card is ready</h2>
-	<p class="lede">{usdDisplay} in bitcoin is confirmed and waiting to be redeemed.</p>
+	<p class="lede">{fundedBtcStr} BTC (≈ {fundedUsd}) is confirmed and waiting to be redeemed.</p>
+	{#if underfunded}
+		<div class="warn-box mtb">
+			Heads up: this is less than the {usdDisplay} you intended. The recipient will still be able to
+			redeem the confirmed amount.
+		</div>
+	{/if}
 
 	<div class="card-wrap">
-		<GiftCard
-			designId={design}
-			{usdDisplay}
-			{btcStr}
-			message={message.trim()}
-			fromName={fromName.trim()}
-		/>
+		<GiftCard designId={design} {usdDisplay} {btcStr} message={message.trim()} fromName={fromName.trim()} />
 	</div>
 
 	<div class="warn-box mtb">
@@ -327,23 +356,21 @@
 	</div>
 
 	<div class="share-actions">
-		<button class="btn btn-primary" onclick={downloadBackup}>
-			{backedUp ? 'Backup downloaded ✓' : 'Download backup'}
-		</button>
-		<button class="btn btn-secondary" onclick={copyLink}>
+		<button class="btn btn-primary" onclick={copyLink}>
 			{linkCopied ? 'Link copied ✓' : 'Copy gift link'}
 		</button>
+		<button class="btn btn-secondary" onclick={downloadBackup}>
+			{backedUp ? 'Backup downloaded ✓' : 'Download backup'}
+		</button>
 	</div>
+	{#if linkCopyFailed}
+		<div class="copy-fallback mono">{shareLink}</div>
+	{/if}
 	<div class="more-dl">
 		<button onclick={() => download('giftbitcoin-share-card.json', packages!.share_card)}>Share card file</button>
 		<span>·</span>
 		<button onclick={() => download('giftbitcoin-watch-only.json', packages!.sender_watch_only)}>Watch-only</button>
 	</div>
-	<p class="backup-note">
-		The backup file contains your gift link{usePass && passphrase
-			? ' (the passphrase is not included — share it separately)'
-			: ''}. If the link is lost, no one — including us — can recover the bitcoin.
-	</p>
 	<button class="done-link" onclick={() => goto('/')}>Done → back to start</button>
 {/if}
 
@@ -507,7 +534,34 @@
 		color: var(--danger);
 		font-size: 14px;
 	}
-	/* pay */
+	.save-first {
+		margin-bottom: 16px;
+	}
+	.save-actions {
+		display: flex;
+		gap: 10px;
+		margin-top: 12px;
+	}
+	.save-actions .btn {
+		width: auto;
+		flex: 1;
+		padding: 12px;
+		font-size: 15px;
+	}
+	.copy-fallback {
+		margin-top: 12px;
+		font-size: 12px;
+		background: #fff;
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		padding: 10px;
+		color: var(--muted-2);
+		user-select: all;
+	}
+	.fallback-note {
+		font-size: 12px;
+		margin-top: 6px;
+	}
 	.pay-card {
 		display: flex;
 		gap: 18px;
@@ -562,22 +616,6 @@
 		font-size: 13px;
 		font-weight: 600;
 	}
-	.fund-opts {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		margin-bottom: 26px;
-	}
-	.fund-title {
-		font-size: 15px;
-		font-weight: 600;
-		margin-bottom: 2px;
-	}
-	.fund-desc {
-		font-size: 13.5px;
-		color: var(--muted);
-		line-height: 1.45;
-	}
 	.tiny-note {
 		font-size: 12.5px;
 		color: var(--muted);
@@ -594,6 +632,10 @@
 		font-size: 14px;
 		line-height: 1.5;
 		color: var(--warn-ink);
+	}
+	.poll-warn {
+		margin-top: 8px;
+		font-weight: 600;
 	}
 	.pulse {
 		flex: none;
@@ -612,7 +654,6 @@
 			opacity: 1;
 		}
 	}
-	/* share */
 	.mtb {
 		margin: 18px 0 20px;
 	}
@@ -638,18 +679,13 @@
 		cursor: pointer;
 		padding: 0;
 	}
-	.backup-note {
-		font-size: 13px;
-		color: var(--muted);
-		line-height: 1.55;
-		margin-top: 14px;
-	}
 	.done-link {
 		font-size: 14px;
 		font-weight: 600;
 		color: var(--link);
 		cursor: pointer;
 		margin-top: 22px;
+		display: block;
 		background: none;
 		border: none;
 		padding: 0;

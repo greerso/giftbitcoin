@@ -40,7 +40,7 @@ export function buildClaimTx(input: {
 	const outScript = btc.OutScript.encode(btc.Address(input.network).decode(input.destAddress));
 
 	const make = (feeSats: number) => {
-		const tx = new btc.Transaction({ allowUnknownOutputs: true });
+		const tx = new btc.Transaction();
 		for (const u of confirmed) {
 			tx.addInput({
 				txid: u.txid,
@@ -55,14 +55,22 @@ export function buildClaimTx(input: {
 		return tx;
 	};
 
-	// Estimate, then refine to the real vsize once the witness sizes are known.
+	if (!(input.feeRate > 0) || input.feeRate > 1000) {
+		throw new Error(`Unreasonable fee rate from the indexer: ${input.feeRate} sat/vB`);
+	}
+	// Estimate, then refine to the REAL vsize once the witness sizes are known and
+	// always apply that fee (never ship a knowingly-underpaying tx near the dust
+	// boundary — that would be rejected by the relay floor instead of a clear error).
 	let feeSats = Math.ceil((11 + confirmed.length * 82 + 43) * input.feeRate);
 	if (gross - feeSats <= DUST_SATS) {
 		throw new Error('The amount is too small to cover the network fee right now.');
 	}
 	let tx = make(feeSats);
 	const refined = Math.ceil(tx.vsize * input.feeRate);
-	if (refined !== feeSats && gross - refined > DUST_SATS) {
+	if (refined !== feeSats) {
+		if (gross - refined <= DUST_SATS) {
+			throw new Error('The amount is too small to cover the network fee right now.');
+		}
 		feeSats = refined;
 		tx = make(feeSats);
 	}

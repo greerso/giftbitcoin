@@ -2,8 +2,21 @@
  * Taproot gift output: claim pk(C) OR older(T) ∧ pk(R) — SPEC §4.1
  */
 import * as btc from '@scure/btc-signer';
+import { schnorr } from '@noble/curves/secp256k1';
 import { numsXOnly } from './nums';
 import { bytesToHex } from './keys';
+
+/** Throw unless `key` is a 32-byte x-only point that lifts on secp256k1 (BIP340). */
+function assertXOnlyOnCurve(key: Uint8Array, name: string): void {
+	if (key.length !== 32) {
+		throw new Error(`${name} must be a 32-byte x-only pubkey`);
+	}
+	try {
+		schnorr.utils.lift_x(BigInt('0x' + bytesToHex(key)));
+	} catch {
+		throw new Error(`${name} is not a valid x-only point on secp256k1`);
+	}
+}
 
 export interface GiftScriptParams {
 	/** 32-byte x-only claim pubkey */
@@ -39,13 +52,12 @@ function expiryScript(R: Uint8Array, T: number): Uint8Array {
 	if (!Number.isInteger(T) || T < 1 || T > 0xffff) {
 		throw new Error(`T out of BIP68 block range: ${T}`);
 	}
-	return btc.Script.encode([
-		btc.ScriptNum().encode(BigInt(T)),
-		'CHECKSEQUENCEVERIFY',
-		'DROP',
-		R,
-		'CHECKSIG'
-	]);
+	// Canonical miniscript `and_v(v:older(T),pk(R))` → `<T> CSV VERIFY <R> CHECKSIG`
+	// (the `v:` wrapper appends OP_VERIFY — NOT OP_DROP). Passing T as a plain
+	// number makes Script.encode emit the minimal push (OP_1..OP_16 for T≤16),
+	// byte-identical to rust-miniscript so the descriptor and the funded address
+	// agree — required for offline recovery via the descriptor (SPEC §5.5).
+	return btc.Script.encode([T, 'CHECKSEQUENCEVERIFY', 'VERIFY', R, 'CHECKSIG']);
 }
 
 /**
@@ -53,9 +65,12 @@ function expiryScript(R: Uint8Array, T: number): Uint8Array {
  */
 export function buildGiftPayment(params: GiftScriptParams): GiftPayment {
 	const { C, R, T } = params;
-	if (C.length !== 32 || R.length !== 32) {
-		throw new Error('C and R must be 32-byte x-only pubkeys');
-	}
+	// Both must be real curve points. C is derived internally so is always valid;
+	// R may be user/config supplied (custom / donate_project) — an off-curve R
+	// would still build a fundable address whose expiry path can never be signed
+	// (scure's p2tr with allowUnknownOutput does not validate the CSV leaf's key).
+	assertXOnlyOnCurve(C, 'C');
+	assertXOnlyOnCurve(R, 'R');
 	const nums = numsXOnly();
 	const claimLeaf = claimScript(C);
 	const expiryLeaf = expiryScript(R, T);
@@ -66,7 +81,8 @@ export function buildGiftPayment(params: GiftScriptParams): GiftPayment {
 		{ script: expiryLeaf, leafVersion: 0xc0 }
 	]);
 
-	// allowUnknown — NUMS has no known private key
+	// 4th arg = allowUnknownOutput: the CSV expiry leaf is not a script shape
+	// scure recognizes, so it must be permitted explicitly.
 	const payment = btc.p2tr(nums, leaves, network, true);
 	if (!payment.address || !payment.script) {
 		throw new Error('p2tr failed to produce address');

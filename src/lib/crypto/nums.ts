@@ -12,6 +12,9 @@ const SEED = new TextEncoder().encode('BTCGiftcard/v1/NUMS');
  * Returns { xOnly, iterations } where iterations is the number of rehashes after seed.
  */
 export function computeNums(): { xOnly: Uint8Array; iterations: number } {
+	if (typeof schnorr.utils.lift_x !== 'function') {
+		throw new Error('NUMS: schnorr.utils.lift_x unavailable (library API changed?)');
+	}
 	let h = sha256(SEED);
 	let iterations = 0;
 	for (;;) {
@@ -35,14 +38,18 @@ export const NUMS_XONLY_HEX =
 
 export const NUMS_ITERATIONS = 0;
 
+let numsCache: Uint8Array | null = null;
+
 export function numsXOnly(): Uint8Array {
+	if (numsCache) return numsCache;
 	const computed = computeNums();
 	if (bytesToHex(computed.xOnly) !== NUMS_XONLY_HEX) {
 		throw new Error(
 			`NUMS mismatch: got ${bytesToHex(computed.xOnly)} expected ${NUMS_XONLY_HEX}`
 		);
 	}
-	return computed.xOnly;
+	numsCache = computed.xOnly;
+	return numsCache;
 }
 
 export function numsFromHex(hex: string = NUMS_XONLY_HEX): Uint8Array {

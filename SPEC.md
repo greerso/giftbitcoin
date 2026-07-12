@@ -150,7 +150,7 @@ claim_priv = scalarize(HKDF-SHA256(
 
 ```text
 claim_priv = scalarize(Argon2id(
-  password = passphrase (UTF-8),
+  password = passphrase (UTF-8, NFC-normalized),
   salt     = claim_secret,          // 32-byte salt; in the URL/package
   m        = 65536,                 // KiB → 64 MiB
   t        = 3,
@@ -240,7 +240,7 @@ The gift package is the **canonical recoverable artifact**. The claim URL is a c
   "created_at": "2026-07-11T12:00:00Z",
 
   "script": {
-    "descriptor": "tr(<NUMS_XONLY>,{pk(<C>),and_v(v:older(<T>),pk(<R>)})",
+    "descriptor": "tr(<NUMS_XONLY>,{pk(<C>),and_v(v:older(<T>),pk(<R>))})",
     "nums_xonly": "<64 hex chars>",
     "T": 12960,
     "C_xonly": "<64 hex>",

@@ -5,6 +5,10 @@ build
 .gitignore
 *.md
 docs
+tests
+vectors
+.claude
+.remember
 .env
 .env.*
 .DS_Store

@@ -3,7 +3,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import * as btc from '@scure/btc-signer';
 import { createGift } from '../../src/lib/crypto/create-gift';
 import { buildPackages, fullClaimLink, claimLinkWithPassphrase } from '../../src/lib/gift-package';
-import { validateSend, verifyTurnstile, checkFunded, sha256Hex } from '../../worker/src/send';
+import { validateSend, verifyTurnstile, checkFunded, sha256Hex, renderEmail, handleSend } from '../../worker/src/send';
 import { stubFetch } from '../lib/helpers';
 import type { SendEnv } from '../../worker/src/types';
 
@@ -128,4 +128,145 @@ describe('worker gates', () => {
 	it('sha256Hex is stable', async () => {
 		expect(await sha256Hex('abc')).toBe('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
 	});
+});
+
+function mockEnv(overrides: Partial<Record<string, unknown>> = {}) {
+	const sent: any[] = [];
+	const env = {
+		EMAIL: { send: vi.fn(async (m: any) => { sent.push(m); return { messageId: 'id' }; }) },
+		IP_LIMIT: { limit: vi.fn(async () => ({ success: true })) },
+		ADDR_LIMIT: { limit: vi.fn(async () => ({ success: true })) },
+		TURNSTILE_SECRET: 'sec',
+		ALLOWED_ORIGIN: 'https://giftbitcoin.app',
+		FROM_EMAIL: 'gifts@giftbitcoin.app',
+		ESPLORA_BASE: 'https://esplora.test',
+		...overrides
+	};
+	return { env: env as any, sent };
+}
+const post = (body: unknown) =>
+	new Request('https://giftbitcoin.app/api/send', {
+		method: 'POST',
+		headers: { 'content-type': 'application/json', 'CF-Connecting-IP': '1.2.3.4' },
+		body: JSON.stringify(body)
+	});
+
+describe('renderEmail', () => {
+	it('escapes HTML in from_name/message; link is present; template is fixed', () => {
+		const { subject, html, text } = renderEmail(
+			'https://giftbitcoin.app/c#g1.AAAA',
+			'<b>Eve</b>',
+			'Hi <script>alert(1)</script>'
+		);
+		expect(html).not.toContain('<script>');
+		expect(html).toContain('&lt;script&gt;');
+		expect(html).toContain('&lt;b&gt;Eve&lt;/b&gt;');
+		expect(html).toContain('https://giftbitcoin.app/c#g1.AAAA');
+		expect(text).toContain('https://giftbitcoin.app/c#g1.AAAA');
+		expect(subject).toContain('Bitcoin gift');
+		expect(html).toContain('4 secret words');
+	});
+});
+
+describe('handleSend', () => {
+	afterEach(() => vi.unstubAllGlobals());
+
+	async function fundedSetup() {
+		const { g, link } = await passGift();
+		stubFetch({
+			'/siteverify': () => new Response(JSON.stringify({ success: true })),
+			'/utxo': () => new Response(JSON.stringify([{ value: 1, status: { confirmed: true } }]))
+		});
+		return { g, link };
+	}
+
+	it('happy path: 200, one email sent to recipient with the link', async () => {
+		const { link } = await fundedSetup();
+		const { env, sent } = mockEnv();
+		const res = await handleSend(post({ to: 'r@x.co', link, turnstile_token: 't', from_name: 'Al', message: 'hi' }), env);
+		expect(res.status).toBe(200);
+		expect(sent.length).toBe(1);
+		expect(sent[0].to).toBe('r@x.co');
+		expect(sent[0].html).toContain(link);
+		expect(sent[0].from.email).toBe('gifts@giftbitcoin.app');
+	}, 30_000);
+
+	it('405 non-POST; 400 bad JSON', async () => {
+		const { env } = mockEnv();
+		expect((await handleSend(new Request('https://x/api/send'), env)).status).toBe(405);
+		const badJson = new Request('https://x/api/send', { method: 'POST', body: '{nope' });
+		expect((await handleSend(badJson, env)).status).toBe(400);
+	});
+
+	it('429 when IP or address limiter says no — before any esplora/turnstile call', async () => {
+		const { link } = await fundedSetup();
+		const { env, sent } = mockEnv({ IP_LIMIT: { limit: async () => ({ success: false }) } });
+		const res = await handleSend(post({ to: 'r@x.co', link, turnstile_token: 't' }), env);
+		expect(res.status).toBe(429);
+		expect(sent.length).toBe(0);
+		const { env: env2 } = mockEnv({ ADDR_LIMIT: { limit: async () => ({ success: false }) } });
+		expect((await handleSend(post({ to: 'r@x.co', link, turnstile_token: 't' }), env2)).status).toBe(429);
+	}, 30_000);
+
+	it('IP rate limit wins over a validation failure — proves IP limit runs before validateSend', async () => {
+		const { env, sent } = mockEnv({ IP_LIMIT: { limit: async () => ({ success: false }) } });
+		// valid JSON, but fails validateSend (no link/turnstile_token) — would be 400 on its own
+		const res = await handleSend(post({ to: 'not-an-email' }), env);
+		expect(res.status).toBe(429);
+		expect(sent.length).toBe(0);
+	}, 30_000);
+
+	it('address rate limit wins over a turnstile failure — proves addr limit runs before turnstile', async () => {
+		const { link } = await passGift();
+		stubFetch({ '/siteverify': () => new Response(JSON.stringify({ success: false })) }); // would be 403 on its own
+		const { env, sent } = mockEnv({ ADDR_LIMIT: { limit: async () => ({ success: false }) } });
+		const res = await handleSend(post({ to: 'r@x.co', link, turnstile_token: 't' }), env);
+		expect(res.status).toBe(429);
+		expect(sent.length).toBe(0);
+	}, 30_000);
+
+	it('turnstile failure wins over a funding failure — proves turnstile runs before checkFunded', async () => {
+		const { link } = await passGift();
+		stubFetch({
+			'/siteverify': () => new Response(JSON.stringify({ success: false })),
+			'/utxo': () => new Response('down', { status: 503 }) // would be 502 on its own
+		});
+		const { env, sent } = mockEnv();
+		const res = await handleSend(post({ to: 'r@x.co', link, turnstile_token: 't' }), env);
+		expect(res.status).toBe(403);
+		expect(sent.length).toBe(0);
+	}, 30_000);
+
+	it('403 on turnstile failure; no email', async () => {
+		const { link } = await passGift();
+		stubFetch({
+			'/siteverify': () => new Response(JSON.stringify({ success: false })),
+			'/utxo': () => new Response(JSON.stringify([{ value: 1, status: { confirmed: true } }]))
+		});
+		const { env, sent } = mockEnv();
+		expect((await handleSend(post({ to: 'r@x.co', link, turnstile_token: 't' }), env)).status).toBe(403);
+		expect(sent.length).toBe(0);
+	}, 30_000);
+
+	it('400 unfunded; 502 esplora down (fail closed) — no email either way', async () => {
+		const { link } = await passGift();
+		const { env, sent } = mockEnv();
+		stubFetch({
+			'/siteverify': () => new Response(JSON.stringify({ success: true })),
+			'/utxo': () => new Response('[]')
+		});
+		expect((await handleSend(post({ to: 'r@x.co', link, turnstile_token: 't' }), env)).status).toBe(400);
+		stubFetch({
+			'/siteverify': () => new Response(JSON.stringify({ success: true })),
+			'/utxo': () => new Response('down', { status: 503 })
+		});
+		expect((await handleSend(post({ to: 'r@x.co', link, turnstile_token: 't' }), env)).status).toBe(502);
+		expect(sent.length).toBe(0);
+	}, 30_000);
+
+	it('502 when EMAIL.send throws', async () => {
+		const { link } = await fundedSetup();
+		const { env } = mockEnv({ EMAIL: { send: async () => { throw Object.assign(new Error('x'), { code: 'E_DELIVERY_FAILED' }); } } });
+		expect((await handleSend(post({ to: 'r@x.co', link, turnstile_token: 't' }), env)).status).toBe(502);
+	}, 30_000);
 });

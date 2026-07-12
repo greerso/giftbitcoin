@@ -116,3 +116,78 @@ export async function sha256Hex(s: string): Promise<string> {
 	const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
 	return Array.from(new Uint8Array(d), (b) => b.toString(16).padStart(2, '0')).join('');
 }
+
+const esc = (s: string) =>
+	s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+
+/** Fixed branded template. The claim link is the only link; never a passphrase. */
+export function renderEmail(link: string, fromName: string, message: string) {
+	const who = fromName ? `${esc(fromName)} sent` : 'Someone sent';
+	const note = message
+		? `<p style="margin:16px 0;padding:12px 16px;background:#f7f2e7;border-radius:10px;color:#4a4436;">${esc(message).replace(/\n/g, '<br>')}</p>`
+		: '';
+	const html = `<div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#2b2620;">
+<h1 style="font-size:22px;">${who} you a Bitcoin gift 🎁</h1>
+${note}
+<p><a href="${link}" style="display:inline-block;background:#c97210;color:#fff;padding:12px 22px;border-radius:10px;text-decoration:none;font-weight:600;">Open your gift</a></p>
+<p style="font-size:14px;color:#6b6355;">The sender will give you <strong>4 secret words</strong> to open it — this email alone can't claim the gift.</p>
+<p style="font-size:12px;color:#9a8e71;">Bitcoin testnet4 — no real value. If the button doesn't work, copy this link:<br>${link}</p>
+</div>`;
+	const text = `${who.replace(/<[^>]*>/g, '')} you a Bitcoin gift.
+${message ? '\n"' + message + '"\n' : ''}
+Open it: ${link}
+
+The sender will give you 4 secret words to open it — this email alone can't claim the gift.
+(Bitcoin testnet4 — no real value.)`;
+	return { subject: `${fromName ? esc(fromName) + ' sent' : 'Someone sent'} you a Bitcoin gift`, html, text };
+}
+
+const json = (status: number, body: Record<string, unknown>) =>
+	new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+const fail = (status: number, error: string) => json(status, { ok: false, error });
+
+/** The full pipeline. Send-and-forget: nothing persistent, no logging of the body. */
+export async function handleSend(request: Request, env: SendEnv): Promise<Response> {
+	if (request.method !== 'POST') return fail(405, 'method');
+	let body: unknown;
+	try {
+		body = await request.json();
+	} catch {
+		return fail(400, 'bad_json');
+	}
+	// Cheap gate first: per-IP counter (CF-Connecting-IP is set by Cloudflare itself).
+	const ip = request.headers.get('CF-Connecting-IP') ?? '0.0.0.0';
+	if (!(await env.IP_LIMIT.limit({ key: ip })).success) return fail(429, 'rate_limited');
+
+	const v = validateSend(body, env);
+	if ('error' in v) return fail(v.status, v.error);
+
+	if (!(await env.ADDR_LIMIT.limit({ key: await sha256Hex(v.address) })).success) {
+		return fail(429, 'rate_limited');
+	}
+	if (!(await verifyTurnstile((body as Record<string, unknown>).turnstile_token as string, ip, env.TURNSTILE_SECRET))) {
+		return fail(403, 'turnstile_failed');
+	}
+	// Funding check LAST among gates: fails closed on esplora trouble.
+	let funded: boolean;
+	try {
+		funded = await checkFunded(v.address, env);
+	} catch {
+		return fail(502, 'chain_unavailable');
+	}
+	if (!funded) return fail(400, 'not_funded');
+
+	const { subject, html, text } = renderEmail(v.link, v.fromName, v.message);
+	try {
+		await env.EMAIL.send({
+			to: v.to,
+			from: { email: env.FROM_EMAIL, name: 'GiftBitcoin' },
+			subject,
+			html,
+			text
+		});
+	} catch {
+		return fail(502, 'send_failed');
+	}
+	return json(200, { ok: true });
+}

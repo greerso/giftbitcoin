@@ -4,7 +4,7 @@
 
 Source of truth for backlog items.
 
-- Spec: [SPEC.md](./SPEC.md) v0.2.5
+- Spec: [SPEC.md](./SPEC.md) v0.2.6
 - Competitive: [docs/COMPETITIVE-LANDSCAPE.md](./docs/COMPETITIVE-LANDSCAPE.md)  
 - Wallets + buy BTC: [docs/WALLETS-AND-ONRAMP-2026.md](./docs/WALLETS-AND-ONRAMP-2026.md)
 
@@ -31,8 +31,8 @@ Source of truth for backlog items.
 - **Real claim broadcast** is implemented but only unit-tested — no live testnet4
   faucet e2e this session. Needs an on-faucet end-to-end run before mainnet talk.
 - **Refund / expiry broadcast** (custom CSV leaf needs a manual witness — scure
-  can't auto-finalize it): recover page is status-check + honest note only.
-- **Static offline claim HTML** (SPEC §5.5 / §14.3.2 mandatory v1 deliverable) — not built.
+  can't auto-finalize it): recover page is status-check + honest note only. **v1.1 (SPEC §14.4).**
+- **Static offline claim HTML** — not built. **v1.1 (SPEC §14.4).**
 - **QR code** on the pay screen (placeholder for now; needs a QR encoder).
 - **Project tip is unpayable** — `PROJECT_TIP_ADDRESS_TESTNET` is empty; tip is
   suggested-only. Set the release-config address or hide the control.
@@ -179,5 +179,5 @@ Not blocking v1. Each needs an ADR if it changes packages or scripts.
 
 ### Remaining review findings (not in #5)
 
-- [ ] `[user decision → deferred]` SPEC amendment: move §5.5 offline-claim kit, §14.1 refund signing + donate/custom policies, §10.4 indexer override to an explicit post-v1 milestone (items already tracked above)
+- [x] `[user decision → approved 2026-07-12]` SPEC amendment: §5.5 offline-claim kit, §14.1 refund signing + donate/custom policies, §10.4 indexer override moved to explicit **v1.1 milestone** (SPEC §14.4, v0.2.6)
 - [ ] Improvements from 2026-07-12 full-codebase review: dust floor by output type (546 for legacy), scure leaf-order finalize dependency (comment/`allowUnknownInputs`), corrupt `g1.` link error message, tip formula vs SPEC §8.1, `ACTIVE_NETWORK` decorative plumbing, `verifyGiftPackage` unused in create flow, secrets-never-sent test, mempool.space-only fee endpoint

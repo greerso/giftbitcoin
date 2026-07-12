@@ -46,8 +46,12 @@ export const REGTEST: NetworkConfig = {
 /** Active product network for v1 builds */
 export const ACTIVE_NETWORK: NetworkConfig = TESTNET4;
 
-/** Min gift amount (sats) — create UX */
-export const MIN_GIFT_SATS = 100_000;
+/**
+ * Min gift amount (sats) — create UX floor. SPEC §8 defaults to 100_000 but calls
+ * it tunable; lowered for the testnet4 demo so the USD presets ($25+) are usable.
+ * Still well above the taproot dust threshold (~330 sats).
+ */
+export const MIN_GIFT_SATS = 10_000;
 
 /** Default tip as fraction of gift */
 export const DEFAULT_TIP_FRACTION = 0.03;

@@ -1,112 +1,668 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
+	import { goto } from '$app/navigation';
+	import { setNav, clearNav } from '$lib/nav.svelte';
+	import * as btc from '@scure/btc-signer';
+	import { parseShareCardFragment } from '$lib/gift-package';
 	import {
 		claimPrivFromSecret,
 		claimPrivFromPassphrase,
+		xOnlyFromPriv,
 		hexToBytesStrict,
-		bytesToHex,
-		xOnlyFromPriv
+		b64urlToBytes
 	} from '$lib/crypto/keys';
+	import { verifyGiftPackage } from '$lib/crypto/create-gift';
+	import { buildClaimTx, type ClaimTxResult } from '$lib/claim-tx';
+	import { getUtxos, confirmedValue, hasMempool, recommendedFeeRate, broadcastTx } from '$lib/esplora';
+	import { fetchBtcUsd, satsToBtc, FALLBACK_BTC_USD } from '$lib/pricing';
+	import { money, fmtBtc, truncMiddle } from '$lib/format';
+	import { DEFAULT_EXPLORER_TX } from '$config/network';
+	import GiftCard from '$lib/components/GiftCard.svelte';
 
-	let status = $state('Open a claim link (…/c#v1.…secret) or paste a share card later.');
-	let secretHex = $state('');
+	type Screen = 'loading' | 'nolink' | 'r0' | 'r1' | 'r2' | 'r3' | 'r4' | 'help';
+	let screen = $state<Screen>('loading');
+
+	interface Loaded {
+		address: string;
+		amountSats: number;
+		C_xonly: string;
+		R_xonly: string;
+		T: number;
+		nums_xonly: string;
+		script_pub_key?: string;
+		secret: Uint8Array;
+		passphraseRequired: boolean;
+		memo: string;
+		fromName: string;
+		design: string;
+	}
+	let g = $state<Loaded | null>(null);
+	let price = $state(FALLBACK_BTC_USD);
+	let isDesktop = $state(false);
+	let chainStatus = $state<'checking' | 'ready' | 'awaiting' | 'empty' | 'unknown'>('checking');
+
+	let pasteLink = $state('');
+	let loadError = $state('');
+	let dest = $state<'phoenix' | 'sparrow' | 'exchange' | 'paste'>('paste');
+	let address = $state('');
+	let addrError = $state('');
 	let passphrase = $state('');
-	let passphraseRequired = $state(false);
-	let C_hex = $state('');
-	let error = $state('');
 
-	onMount(() => {
-		const hash = window.location.hash.replace(/^#/, '');
-		if (hash.startsWith('v1.p.')) {
-			passphraseRequired = true;
-			secretHex = hash.slice('v1.p.'.length);
-			status = 'Passphrase required. Enter it to continue.';
-		} else if (hash.startsWith('v1.')) {
-			secretHex = hash.slice('v1.'.length);
-			status = 'Claim secret loaded from link. Destination chooser coming next — crypto path works.';
-			tryDerive();
+	let preparing = $state(false);
+	let prepError = $state('');
+	let prep = $state<ClaimTxResult | null>(null);
+	let sending = $state(false);
+	let sentTxid = $state('');
+
+	const btcStr = $derived(g ? fmtBtc(satsToBtc(g.amountSats)) : '0');
+	const usdDisplay = $derived(g ? money(satsToBtc(g.amountSats) * price) : '$0');
+	const isExchangeDest = $derived(dest === 'exchange');
+
+	const GUIDES: Record<string, { title: string; steps: string[] }> = {
+		phoenix: {
+			title: 'Set up Phoenix',
+			steps: [
+				'Install the free Phoenix app from your app store.',
+				'Open it and tap “Receive”.',
+				'Tap “Copy address”, then paste it below.'
+			]
+		},
+		sparrow: {
+			title: 'Set up Sparrow',
+			steps: [
+				'Download Sparrow Wallet from sparrowwallet.com.',
+				'Create a wallet and open the “Receive” tab.',
+				'Copy the address shown, then paste it below.'
+			]
+		},
+		exchange: {
+			title: 'Get your exchange address',
+			steps: [
+				'Open your exchange app (Coinbase, Kraken, Gemini…).',
+				'Find “Receive” or “Deposit” and choose Bitcoin.',
+				'Copy the address it shows, then paste it below.'
+			]
+		},
+		paste: {
+			title: 'Paste your address',
+			steps: [
+				'Open your wallet and find “Receive”.',
+				'Copy the bitcoin address.',
+				'Paste it below — we’ll double-check it looks right.'
+			]
 		}
+	};
+	const guide = $derived(GUIDES[dest] ?? GUIDES.paste);
+
+	function loadFromFragment(frag: string): boolean {
+		try {
+			const sc = parseShareCardFragment(frag) as any;
+			const script = sc.script ?? {};
+			const claim = sc.claim ?? {};
+			if (!script.address || !claim.secret_b64url) throw new Error('missing fields');
+			g = {
+				address: script.address,
+				amountSats: Number(sc.amount_expected_sats) || 0,
+				C_xonly: script.C_xonly,
+				R_xonly: script.R_xonly,
+				T: Number(script.T),
+				nums_xonly: script.nums_xonly,
+				script_pub_key: script.script_pub_key,
+				secret: b64urlToBytes(claim.secret_b64url, 32),
+				passphraseRequired: Boolean(claim.passphrase_required),
+				memo: sc.memo ?? '',
+				fromName: sc.from_name ?? '',
+				design: sc.card_design ?? 'midnight'
+			};
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
+	onMount(async () => {
+		isDesktop = window.matchMedia?.('(min-width:720px)').matches ?? false;
+		const hash = window.location.hash ?? '';
+		const frag = hash.startsWith('#') ? hash.slice(1) : hash;
+		if (frag.startsWith('g1.') && loadFromFragment(frag)) {
+			screen = 'r0';
+			checkChain();
+		} else {
+			screen = 'nolink';
+			if (frag.startsWith('v1.')) {
+				loadError =
+					'This is a short link. Open the full gift link (or paste the sender’s backup file link) to redeem.';
+			}
+		}
+		price = await fetchBtcUsd();
 	});
 
-	async function tryDerive() {
-		error = '';
-		C_hex = '';
+	$effect(() => {
+		const back: Record<Screen, (() => void) | null> = {
+			loading: null,
+			nolink: () => goto('/'),
+			r0: () => goto('/'),
+			r1: () => (screen = 'r0'),
+			r2: () => (screen = 'r1'),
+			r3: () => (screen = 'r2'),
+			r4: null,
+			help: () => (screen = 'r1')
+		};
+		setNav(back[screen] ?? (() => goto('/')));
+	});
+
+	onDestroy(clearNav);
+
+	async function checkChain() {
+		if (!g) return;
 		try {
-			const secret = hexToBytesStrict(secretHex);
-			const priv = passphraseRequired
-				? await claimPrivFromPassphrase(secret, passphrase)
-				: claimPrivFromSecret(secret);
-			C_hex = bytesToHex(xOnlyFromPriv(priv));
-			status = 'Claim key derived in-browser (never sent to a server). Full claim UI next.';
-		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
+			const utxos = await getUtxos(g.address);
+			if (confirmedValue(utxos) > 0) chainStatus = 'ready';
+			else if (hasMempool(utxos)) chainStatus = 'awaiting';
+			else chainStatus = 'empty';
+		} catch {
+			chainStatus = 'unknown';
 		}
 	}
+
+	function loadPasted() {
+		loadError = '';
+		const raw = pasteLink.trim();
+		const hashIdx = raw.indexOf('#');
+		const frag = hashIdx >= 0 ? raw.slice(hashIdx + 1) : raw;
+		if (loadFromFragment(frag)) {
+			screen = 'r0';
+			checkChain();
+		} else {
+			loadError = 'That link doesn’t contain a gift. Paste the full link the sender gave you.';
+		}
+	}
+
+	function pick(d: typeof dest) {
+		dest = d;
+		address = '';
+		addrError = '';
+		screen = 'r2';
+	}
+
+	function validTestnetAddress(a: string): boolean {
+		try {
+			btc.Address(btc.TEST_NETWORK).decode(a.trim());
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
+	async function submitAddr() {
+		const a = address.trim();
+		if (/^(bc1|[13])/.test(a) && !/^tb1/.test(a)) {
+			addrError = 'That looks like a mainnet address. This is a testnet gift — use a testnet address.';
+			return;
+		}
+		if (!validTestnetAddress(a)) {
+			addrError =
+				'That doesn’t look like a bitcoin address. In test mode it usually starts with “tb1” and has no spaces.';
+			return;
+		}
+		if (g?.passphraseRequired && !passphrase) {
+			addrError = 'This gift needs its passphrase — enter it above to continue.';
+			return;
+		}
+		addrError = '';
+		screen = 'r3';
+		await prepareClaim();
+	}
+
+	async function deriveClaimPriv(): Promise<Uint8Array> {
+		if (!g) throw new Error('no gift');
+		return g.passphraseRequired
+			? await claimPrivFromPassphrase(g.secret, passphrase)
+			: claimPrivFromSecret(g.secret);
+	}
+
+	async function prepareClaim() {
+		if (!g) return;
+		preparing = true;
+		prepError = '';
+		prep = null;
+		try {
+			const claimPriv = await deriveClaimPriv();
+			const C = xOnlyFromPriv(claimPriv);
+			// Integrity: the derived C (and rebuilt address) must match the package.
+			const check = await verifyGiftPackage({
+				secret: g.secret,
+				passphrase,
+				passphraseRequired: g.passphraseRequired,
+				script: {
+					C_xonly: g.C_xonly,
+					R_xonly: g.R_xonly,
+					T: g.T,
+					nums_xonly: g.nums_xonly,
+					address: g.address,
+					script_pub_key: g.script_pub_key
+				},
+				network: btc.TEST_NETWORK
+			});
+			if (!check.ok) {
+				prepError = g.passphraseRequired
+					? 'That passphrase doesn’t match this gift. Check it and try again.'
+					: 'This gift link looks corrupted (' + check.errors[0] + ').';
+				return;
+			}
+			const utxos = await getUtxos(g.address);
+			if (confirmedValue(utxos) <= 0) {
+				prepError = hasMempool(utxos)
+					? 'This gift is funded but still waiting to confirm on the chain. Try again in a few minutes.'
+					: 'This gift isn’t funded yet, or it has already been redeemed.';
+				return;
+			}
+			const feeRate = await recommendedFeeRate();
+			prep = buildClaimTx({
+				claimPriv,
+				C,
+				R: hexToBytesStrict(g.R_xonly, 32),
+				T: g.T,
+				utxos,
+				destAddress: address.trim(),
+				feeRate,
+				network: btc.TEST_NETWORK
+			});
+		} catch (e) {
+			prepError = e instanceof Error ? e.message : String(e);
+		} finally {
+			preparing = false;
+		}
+	}
+
+	async function redeem() {
+		if (!prep || sending) return;
+		sending = true;
+		prepError = '';
+		try {
+			sentTxid = await broadcastTx(prep.hex);
+			screen = 'r4';
+		} catch (e) {
+			prepError = 'Broadcast failed: ' + (e instanceof Error ? e.message : String(e));
+		} finally {
+			sending = false;
+		}
+	}
+
+	const netStr = $derived(
+		prep ? fmtBtc(satsToBtc(prep.netSats)) + ' BTC (≈ ' + money(satsToBtc(prep.netSats) * price) + ')' : ''
+	);
+	const feeStr = $derived(prep ? money(satsToBtc(prep.feeSats) * price) : '');
 </script>
 
-<h1>Claim gift</h1>
-<p class="banner-note">Where should we send it? Full destination chooser (Phoenix, exchanges, …) ships next.</p>
-
-<p>{status}</p>
-
-{#if passphraseRequired}
-	<label>
-		Passphrase
-		<input type="password" bind:value={passphrase} />
-	</label>
-	<button type="button" onclick={tryDerive}>Unlock</button>
+{#if screen === 'loading'}
+	<p class="lede">Loading your gift…</p>
 {/if}
 
-{#if C_hex}
-	<p class="mono">Claim pubkey C (x-only): {C_hex}</p>
+{#if screen === 'nolink'}
+	<h2 class="h2">Open your gift link</h2>
+	<p class="lede">
+		Paste the gift link someone sent you and we’ll walk you through redeeming it — about two minutes,
+		no account needed.
+	</p>
+	<textarea bind:value={pasteLink} placeholder="https://giftbitcoin.app/c#…" rows="3" class="mono"></textarea>
+	{#if loadError}<p class="err">{loadError}</p>{/if}
+	<button class="btn btn-primary mt" onclick={loadPasted}>Open gift</button>
 {/if}
 
-{#if error}
-	<p class="err">{error}</p>
+{#if screen === 'r0' && g}
+	<div class="card-wrap">
+		<GiftCard
+			designId={g.design}
+			{usdDisplay}
+			{btcStr}
+			label="A gift for you"
+			message={g.memo}
+			fromName={g.fromName}
+		/>
+	</div>
+	<div class="badge" class:warn={chainStatus === 'empty'}>
+		<span class="badge-dot"></span>
+		{#if chainStatus === 'ready'}Ready to redeem{:else if chainStatus === 'awaiting'}Funds confirming…{:else if chainStatus === 'empty'}Not funded yet{:else if chainStatus === 'checking'}Checking…{:else}Ready to redeem{/if}
+	</div>
+	<h2 class="h2">Someone sent you bitcoin</h2>
+	<p class="lede">
+		New to bitcoin? That’s OK — we’ll walk you through it, step by step. It takes about two minutes.
+	</p>
+	<button class="btn btn-primary" onclick={() => (screen = 'r1')}>Redeem your bitcoin</button>
 {/if}
 
-<p class="hint">
-	We never ask for exchange passwords. You will paste a Bitcoin deposit address from Coinbase,
-	Gemini, Kraken, Phoenix, or any wallet.
-</p>
+{#if screen === 'r1'}
+	<h2 class="h2">Where should we send it?</h2>
+	<p class="lede">Your bitcoin needs a home. Pick whatever feels easiest.</p>
+
+	<button class="rec" onclick={() => pick(isDesktop ? 'sparrow' : 'phoenix')}>
+		<span class="rec-tag">Recommended</span>
+		<span class="rec-title">
+			{isDesktop ? 'Sparrow — a wallet on this computer' : 'Phoenix — a free wallet app'}
+		</span>
+		<span class="rec-desc">
+			{isDesktop
+				? 'Your bitcoin, on your own machine.'
+				: 'Your bitcoin, on your phone. Takes about a minute to set up.'}
+		</span>
+	</button>
+
+	<div class="opts">
+		<button class="opt" onclick={() => pick('exchange')}>
+			<div class="opt-title">An exchange account</div>
+			<div class="opt-desc">Coinbase, Kraken, Gemini — if you already have one</div>
+		</button>
+		<button class="opt" onclick={() => pick('paste')}>
+			<div class="opt-title">I have a bitcoin address</div>
+			<div class="opt-desc">Paste any address from any wallet</div>
+		</button>
+		<button class="opt" onclick={() => (screen = 'help')}>
+			<div class="opt-title">Help me choose</div>
+			<div class="opt-desc">A 30-second guide, no jargon</div>
+		</button>
+	</div>
+{/if}
+
+{#if screen === 'r2'}
+	<h2 class="h2">{guide.title}</h2>
+	<div class="steps">
+		{#each guide.steps as s, i}
+			<div class="stepline">
+				<div class="stepnum">{i + 1}</div>
+				<div class="steptext">{s}</div>
+			</div>
+		{/each}
+	</div>
+	{#if g?.passphraseRequired}
+		<div class="label-caps">Gift passphrase</div>
+		<input bind:value={passphrase} type="password" placeholder="The passphrase the sender shared" class="mb" />
+	{/if}
+	<div class="label-caps">Paste your bitcoin address</div>
+	<textarea bind:value={address} placeholder="tb1q…" rows="3" class="mono"></textarea>
+	{#if addrError}<p class="err">{addrError}</p>{/if}
+	<button class="btn btn-primary mt" onclick={submitAddr}>Continue</button>
+{/if}
+
+{#if screen === 'r3' && g}
+	<h2 class="h2">Review</h2>
+	{#if preparing}
+		<p class="lede">Checking the gift on the chain and preparing your transaction…</p>
+	{:else if prepError}
+		<div class="warn-box">{prepError}</div>
+		<button class="btn btn-secondary mt" onclick={() => (screen = 'r2')}>Back</button>
+	{:else if prep}
+		<div class="review card">
+			<div class="rrow">
+				<span class="rk">Gift card</span><span class="rv">{usdDisplay} · {btcStr} BTC</span>
+			</div>
+			<div class="rrow">
+				<span class="rk">Network fee</span><span class="rv">− {feeStr}</span>
+			</div>
+			<div class="rrow">
+				<span class="rk">You receive</span><span class="rv net">{netStr}</span>
+			</div>
+			<div class="rrow last">
+				<span class="rk">To</span><span class="rv mono small">{truncMiddle(address.trim())}</span>
+			</div>
+		</div>
+		{#if isExchangeDest}
+			<div class="info-box mb">
+				Exchanges hold bitcoin on your behalf. Someday, you might like moving it to a wallet only you
+				control — no rush, and no pressure.
+			</div>
+		{/if}
+		<p class="fine">
+			Redeeming sends the full amount in one transaction. Afterwards, the gift link is empty and can’t
+			be used again.
+		</p>
+		<button class="btn btn-primary" disabled={sending} onclick={redeem}>
+			{sending ? 'Sending…' : 'Redeem my bitcoin'}
+		</button>
+	{/if}
+{/if}
+
+{#if screen === 'r4' && g}
+	<div class="success-check">✓</div>
+	<h2 class="h2">It's on the way</h2>
+	<p class="lede">{netStr} has been broadcast to your address. Nothing else to do.</p>
+	<div class="card txcard">
+		<div class="label-caps">Transaction</div>
+		<a class="mono small" href={DEFAULT_EXPLORER_TX + sentTxid} target="_blank" rel="noreferrer">
+			{truncMiddle(sentTxid, 12, 8)} ↗
+		</a>
+	</div>
+	{#if isExchangeDest}
+		<div class="info-box mb">
+			Heads up: exchanges can take 10–60 minutes to show incoming bitcoin. It's normal.
+		</div>
+	{/if}
+	<p class="fine">This gift card has now been redeemed — the link is empty.</p>
+	<button class="done-link" onclick={() => goto('/')}>Done</button>
+{/if}
+
+{#if screen === 'help'}
+	<h2 class="h2">Which option should I pick?</h2>
+	<div class="faq">
+		<div class="card">
+			<div class="faq-q">On a phone, nothing set up?</div>
+			<div class="faq-a"><strong>Phoenix</strong> — a free wallet app. About a minute to set up.</div>
+		</div>
+		<div class="card">
+			<div class="faq-q">Already use Coinbase or Kraken?</div>
+			<div class="faq-a">Use your exchange — paste its Bitcoin deposit address.</div>
+		</div>
+		<div class="card">
+			<div class="faq-q">Know your way around?</div>
+			<div class="faq-a">Paste any address from any wallet.</div>
+		</div>
+	</div>
+	<button class="btn btn-primary mt" onclick={() => (screen = 'r1')}>Back to redeeming</button>
+{/if}
 
 <style>
-	.banner-note {
-		font-weight: 600;
-		color: #0f172a;
+	.card-wrap {
+		margin-bottom: 18px;
 	}
-	.mono {
-		font-family: ui-monospace, monospace;
-		word-break: break-all;
-		font-size: 0.85rem;
+	.badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		background: var(--success-bg);
+		color: var(--success);
+		font-size: 13px;
+		font-weight: 600;
+		border-radius: 999px;
+		padding: 6px 14px;
+		margin-bottom: 16px;
+	}
+	.badge.warn {
+		background: var(--warn-bg);
+		color: var(--warn-ink);
+	}
+	.badge-dot {
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		background: currentColor;
 	}
 	.err {
-		color: #b91c1c;
+		color: var(--danger);
+		font-size: 13.5px;
+		margin-top: 8px;
+		line-height: 1.5;
 	}
-	.hint {
-		margin-top: 2rem;
-		color: #64748b;
-		font-size: 0.9rem;
+	.mt {
+		margin-top: 20px;
 	}
-	label {
-		display: block;
-		margin: 1rem 0;
-		font-weight: 600;
+	.mb {
+		margin-bottom: 16px;
 	}
-	input {
+	.rec {
 		display: block;
 		width: 100%;
-		margin-top: 0.35rem;
-		padding: 0.5rem;
-		box-sizing: border-box;
-	}
-	button {
-		padding: 0.75rem 1rem;
-		font: inherit;
-		font-weight: 600;
-		border: none;
-		border-radius: 0.5rem;
-		background: #f59e0b;
+		text-align: left;
+		background: #fff;
+		border: 2px solid var(--amber);
+		border-radius: 16px;
+		padding: 18px;
+		margin-bottom: 12px;
 		cursor: pointer;
+		box-shadow: 0 4px 14px rgba(201, 114, 16, 0.1);
+	}
+	.rec:hover {
+		background: #fdf9f1;
+	}
+	.rec-tag {
+		display: inline-block;
+		background: var(--warn-bg);
+		color: var(--warn-ink);
+		font-size: 11px;
+		font-weight: 700;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		border-radius: 6px;
+		padding: 3px 8px;
+		margin-bottom: 10px;
+	}
+	.rec-title {
+		display: block;
+		font-size: 16px;
+		font-weight: 600;
+		margin-bottom: 3px;
+	}
+	.rec-desc {
+		display: block;
+		font-size: 14px;
+		color: var(--muted);
+		line-height: 1.5;
+	}
+	.opts {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+	.opt {
+		text-align: left;
+		background: #fff;
+		border: 1px solid var(--border);
+		border-radius: 14px;
+		padding: 16px 18px;
+		cursor: pointer;
+	}
+	.opt:hover {
+		border-color: var(--amber);
+	}
+	.opt-title {
+		font-size: 15px;
+		font-weight: 600;
+		margin-bottom: 2px;
+	}
+	.opt-desc {
+		font-size: 13.5px;
+		color: var(--muted);
+		line-height: 1.45;
+	}
+	.steps {
+		display: flex;
+		flex-direction: column;
+		margin: 18px 0 24px;
+	}
+	.stepline {
+		display: flex;
+		gap: 14px;
+		align-items: flex-start;
+		padding: 10px 0;
+	}
+	.stepnum {
+		flex: none;
+		width: 26px;
+		height: 26px;
+		border-radius: 50%;
+		background: #f3ebdb;
+		color: var(--warn-ink);
+		font-size: 13px;
+		font-weight: 700;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+	.steptext {
+		font-size: 14.5px;
+		line-height: 1.55;
+		color: var(--muted-2);
+		padding-top: 2px;
+	}
+	.review {
+		padding: 6px 18px;
+		margin-bottom: 16px;
+	}
+	.rrow {
+		display: flex;
+		justify-content: space-between;
+		gap: 16px;
+		padding: 13px 0;
+		border-bottom: 1px solid #f2ede1;
+		font-size: 14.5px;
+	}
+	.rrow.last {
+		border-bottom: none;
+	}
+	.rk {
+		color: var(--muted);
+		flex: none;
+	}
+	.rv {
+		font-weight: 600;
+		text-align: right;
+	}
+	.rv.net {
+		font-weight: 700;
+		color: var(--success);
+	}
+	.small {
+		font-size: 13px;
+		color: var(--muted-2);
+		font-weight: 500;
+	}
+	.fine {
+		font-size: 13.5px;
+		line-height: 1.55;
+		color: var(--muted);
+		margin-bottom: 20px;
+	}
+	.txcard {
+		margin-bottom: 14px;
+	}
+	.faq {
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+	}
+	.faq-q {
+		font-size: 15px;
+		font-weight: 600;
+		margin-bottom: 4px;
+	}
+	.faq-a {
+		font-size: 14px;
+		line-height: 1.55;
+		color: var(--muted);
+	}
+	.faq-a strong {
+		color: var(--ink);
+	}
+	.done-link {
+		font-size: 14px;
+		font-weight: 600;
+		color: var(--link);
+		cursor: pointer;
+		margin-top: 24px;
+		background: none;
+		border: none;
+		padding: 0;
+	}
+	.label-caps {
+		margin-bottom: 10px;
 	}
 </style>

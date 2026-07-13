@@ -1,15 +1,17 @@
 // worker/wrangler.jsonc — the /api/send email relay (design doc 2026-07-12).
 // Deploy: npx wrangler deploy -c worker/wrangler.jsonc
-// Secrets: npx wrangler secret put TURNSTILE_SECRET -c worker/wrangler.jsonc
+// Secrets: TURNSTILE_SECRET, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+//   npx wrangler secret put <NAME> -c worker/wrangler.jsonc
+// Mail: AWS SES (not Cloudflare Email Sending). FROM_EMAIL must be SES-verified.
 {
 	"name": "giftbitcoin-send",
 	"main": "src/index.ts",
 	"compatibility_date": "2026-07-01",
 	"routes": [{ "pattern": "giftbitcoin.app/api/send", "zone_name": "giftbitcoin.app" }],
-	"send_email": [{ "name": "EMAIL" }],
 	"vars": {
 		"ALLOWED_ORIGIN": "https://giftbitcoin.app",
-		"FROM_EMAIL": "gifts@giftbitcoin.app",
+		"FROM_EMAIL": "gifts@greerso.com",
+		"AWS_REGION": "us-east-1",
 		"ESPLORA_BASE": "https://mempool.space/testnet4/api"
 	},
 	"unsafe": {

@@ -2,11 +2,13 @@
  * POST /api/send — send-and-forget email relay for passphrase-committed gifts.
  * Design: docs/superpowers/specs/2026-07-12-send-mechanism-design.md.
  * SPEC §5.1 carve-out: the share_card transits, is never persisted, never logged.
+ * Mail: AWS SES (see ses.ts) — not Cloudflare Email Sending.
  */
+import * as btc from '@scure/btc-signer';
 import { buildGiftPayment } from '../../src/lib/crypto/gift-script';
 import { hexToBytesStrict, b64urlToBytes } from '../../src/lib/crypto/keys';
-import { ACTIVE_NETWORK } from '../../src/config/network';
 import type { SendEnv } from './types';
+import { sendViaSes } from './ses';
 
 const B64URL = /^[A-Za-z0-9_-]+$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -64,7 +66,7 @@ export function validateSend(body: unknown, env: SendEnv): ValidSend | SendError
 			C: hexToBytesStrict(String(script.C_xonly), 32),
 			R: hexToBytesStrict(String(script.R_xonly), 32),
 			T: Number(script.T),
-			network: ACTIVE_NETWORK.scure
+			network: btc.TEST_NETWORK
 		});
 		if (payment.address !== script.address) return bad('address_mismatch');
 		if (payment.nums_xonly !== script.nums_xonly) return bad('address_mismatch');
@@ -182,14 +184,17 @@ export async function handleSend(request: Request, env: SendEnv): Promise<Respon
 	if (!funded) return fail(400, 'not_funded');
 
 	const { subject, html, text } = renderEmail(v.link, v.fromName, v.message);
+	const mail = {
+		to: v.to,
+		from: { email: env.FROM_EMAIL, name: 'GiftBitcoin' },
+		subject,
+		html,
+		text
+	};
 	try {
-		await env.EMAIL.send({
-			to: v.to,
-			from: { email: env.FROM_EMAIL, name: 'GiftBitcoin' },
-			subject,
-			html,
-			text
-		});
+		// Tests inject env.EMAIL; production uses AWS SES (no CF Email Sending).
+		if (env.EMAIL?.send) await env.EMAIL.send(mail);
+		else await sendViaSes(env, mail);
 	} catch {
 		return fail(502, 'send_failed');
 	}

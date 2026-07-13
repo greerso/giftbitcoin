@@ -78,6 +78,7 @@ origin is untouched. **Outbound mail uses AWS SES** (not Cloudflare Email Sendin
 | Worker deploy `giftbitcoin-send` | Live on `giftbitcoin.app/api/send` |
 | Turnstile managed widget | Done — secret via wrangler |
 | Mail transport | **AWS SES** (`us-east-1`), from `gifts@greerso.com` (SES-verified domain greerso.com) |
+| IAM for Worker | **`giftbitcoin-send-ses`** — SES send only on greerso.com identities |
 | Cloudflare Email Sending | **Not used** (paid product skipped) |
 | Coolify static app | Live on main |
 
@@ -90,8 +91,9 @@ npx wrangler secret put AWS_SECRET_ACCESS_KEY -c worker/wrangler.jsonc
 ```
 
 `AWS_REGION`, `FROM_EMAIL`, `ALLOWED_ORIGIN`, `ESPLORA_BASE` are non-secret vars in
-`worker/wrangler.jsonc`. Prefer an IAM user limited to `ses:SendEmail` /
-`ses:SendRawEmail` on the from-identity (do not reuse a broad admin key long-term).
+`worker/wrangler.jsonc`. Production keys come from IAM user **`giftbitcoin-send-ses`**
+(inline policy `GiftBitcoinSendSesOnly`: `ses:SendEmail` / `ses:SendRawEmail` on
+`identity/greerso.com` + `identity/gifts@greerso.com` only — not the broad `awscli` user).
 
 ### Optional: send from @giftbitcoin.app
 
@@ -101,8 +103,10 @@ display name **GiftBitcoin** with envelope from greerso.com.
 
 ### Smoke test
 
-Create a passphrase (email-delivery) gift on the live site, fund it, send to an
-external inbox. Confirm mail arrives and three-segment POST returns 400.
+**Gates (live):** GET → 405; three-segment link POST → 400 `bad_link`; missing Turnstile → 400.
+
+**Full path:** create a passphrase (email-delivery) gift on the live site, fund it on
+testnet4, send to an external inbox. Confirm mail arrives from `gifts@greerso.com`.
 
 The Worker stores nothing persistent (rate-limit counters + a 60 s funding-check cache).
 Interim domains (giftbitcoin.greerso.com) are rejected by `ALLOWED_ORIGIN` by design.

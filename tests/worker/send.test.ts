@@ -138,8 +138,11 @@ function mockEnv(overrides: Partial<Record<string, unknown>> = {}) {
 		ADDR_LIMIT: { limit: vi.fn(async () => ({ success: true })) },
 		TURNSTILE_SECRET: 'sec',
 		ALLOWED_ORIGIN: 'https://giftbitcoin.app',
-		FROM_EMAIL: 'gifts@giftbitcoin.app',
+		FROM_EMAIL: 'gifts@greerso.com',
+		AWS_REGION: 'us-east-1',
 		ESPLORA_BASE: 'https://esplora.test',
+		AWS_ACCESS_KEY_ID: 'test',
+		AWS_SECRET_ACCESS_KEY: 'test',
 		...overrides
 	};
 	return { env: env as any, sent };
@@ -188,7 +191,7 @@ describe('handleSend', () => {
 		expect(sent.length).toBe(1);
 		expect(sent[0].to).toBe('r@x.co');
 		expect(sent[0].html).toContain(link);
-		expect(sent[0].from.email).toBe('gifts@giftbitcoin.app');
+		expect(sent[0].from.email).toBe('gifts@greerso.com');
 	}, 30_000);
 
 	it('405 non-POST; 400 bad JSON', async () => {

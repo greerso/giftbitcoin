@@ -69,58 +69,40 @@ SSL: Cloudflare edge terminates HTTPS to the client; the tunnel then speaks HTTP
 ## Send relay Worker (/api/send)
 
 The email relay is a Cloudflare Worker (`worker/`) on the giftbitcoin.app zone — the static
-origin is untouched.
+origin is untouched. **Outbound mail uses AWS SES** (not Cloudflare Email Sending).
 
-### Status (2026-07-12 evening)
+### Status
 
 | Step | Status |
 |------|--------|
-| Worker deploy `giftbitcoin-send` | **Done** — route `giftbitcoin.app/api/send` (live: GET→405, bad body→400) |
-| Turnstile managed widget `giftbitcoin-send` | **Done** — domains `giftbitcoin.app` + `www`; site key in `src/config/send.ts`; secret via `wrangler secret put TURNSTILE_SECRET` |
-| Coolify static app on `main` (#14) | **Done** — uuid `jdhe9b54fe70iddhxr351sml` |
-| Email Sending domain onboard | **Blocked** — see below |
-| Funded live email smoke | **Not started** (depends on Email Sending) |
+| Worker deploy `giftbitcoin-send` | Live on `giftbitcoin.app/api/send` |
+| Turnstile managed widget | Done — secret via wrangler |
+| Mail transport | **AWS SES** (`us-east-1`), from `gifts@greerso.com` (SES-verified domain greerso.com) |
+| Cloudflare Email Sending | **Not used** (paid product skipped) |
+| Coolify static app | Live on main |
 
-### Email Sending — dashboard required
-
-CLI and both tokens fail:
-
-```text
-npx wrangler email sending enable giftbitcoin.app
-→ Unauthorized [code: 2036]
-# same 2036/10000 on /accounts/.../email/sending/zones and zone subdomains
-# with wrangler OAuth and ~/.cloudflare/token
-```
-
-**Do this once in the Cloudflare dashboard** (account Magnolia Tech Services):
-
-1. [Email Sending](https://dash.cloudflare.com/?to=/:account/email-service/sending) → **Onboard Domain** → `giftbitcoin.app` → add SPF/DKIM records.
-2. Confirm `npx wrangler email sending settings giftbitcoin.app` (or list) succeeds.
-3. Worker already sends `from: gifts@giftbitcoin.app` — no redeploy needed for the address alone.
-
-If the product is still private beta and the account is not entitled, request access / wait for GA; the Worker binding deploys either way but `EMAIL.send` will 502 until onboard succeeds.
-
-### Recreate / rotate
+### Secrets (Worker)
 
 ```bash
-# Worker (after code change)
-npx wrangler deploy -c worker/wrangler.jsonc
-
-# Turnstile secret only (never commit)
 npx wrangler secret put TURNSTILE_SECRET -c worker/wrangler.jsonc
-# then put matching public site key in src/config/send.ts + Coolify redeploy
+npx wrangler secret put AWS_ACCESS_KEY_ID -c worker/wrangler.jsonc
+npx wrangler secret put AWS_SECRET_ACCESS_KEY -c worker/wrangler.jsonc
 ```
 
-### Smoke test (after email onboard)
+`AWS_REGION`, `FROM_EMAIL`, `ALLOWED_ORIGIN`, `ESPLORA_BASE` are non-secret vars in
+`worker/wrangler.jsonc`. Prefer an IAM user limited to `ses:SendEmail` /
+`ses:SendRawEmail` on the from-identity (do not reuse a broad admin key long-term).
 
-Create a passphrase (email-delivery) gift on the live site, fund it, and send to an external
-email you control that is **not** pre-verified on the CF account. Confirm mail arrives and
-`POST /api/send` with a three-segment link returns 400. If delivery fails with an
-"allowed list" / recipient-restriction error, review the `send_email` binding before
-trusting arbitrary recipients.
+### Optional: send from @giftbitcoin.app
 
-**Note:** Gate logic was unit-tested with Node mocks. First live email after onboard is the
-real verification of `send_email`, ratelimit bindings, and Cache API funding cache.
+Verify the domain in SES (DKIM CNAMEs in the giftbitcoin.app zone), then set
+`FROM_EMAIL` to `gifts@giftbitcoin.app` and redeploy. Until then branding uses
+display name **GiftBitcoin** with envelope from greerso.com.
+
+### Smoke test
+
+Create a passphrase (email-delivery) gift on the live site, fund it, send to an
+external inbox. Confirm mail arrives and three-segment POST returns 400.
 
 The Worker stores nothing persistent (rate-limit counters + a 60 s funding-check cache).
 Interim domains (giftbitcoin.greerso.com) are rejected by `ALLOWED_ORIGIN` by design.

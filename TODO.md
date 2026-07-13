@@ -21,17 +21,14 @@ Real Turnstile widget `giftbitcoin-send` created; site key in `src/config/send.t
 via `wrangler secret put TURNSTILE_SECRET`.
 
 **Follow-ups:**
-- [ ] **Email Sending onboard** (blocked): `wrangler email sending enable giftbitcoin.app`
-      and API list both return **Unauthorized 2036** (wrangler OAuth + `~/.cloudflare/token`).
-      Danny must onboard in CF dashboard: **Compute → Email Service → Email Sending →
-      Onboard Domain → giftbitcoin.app** (adds SPF/DKIM). Until then `EMAIL.send` fails closed
-      → UI shows copy-link fallback.
-- [ ] Live smoke after email onboard: fund testnet4 gift, email to **unverified external**
-      inbox, confirm 3-segment POST returns 400.
+- [x] **Mail transport** — AWS SES (not CF Email Sending). From `gifts@greerso.com` until
+      giftbitcoin.app is optional-verified in SES.
+- [ ] Live smoke: fund testnet4 gift, email to external inbox via `/api/send`, confirm 3-seg 400.
 - [ ] Manual QA: 3-segment QR density scan on real phone cameras (~1.6–1.9 KB → 137×145
       modules at `ecc:'low'`).
 - [x] Design v2 handoff + fiat/BTC denom toggle + home/claim copy alignment (see
       `docs/superpowers/designs/`). Logo concepts B/C remain brand archive only (not shipped).
+- [ ] Prefer SES-only IAM user (least privilege) for Worker secrets (rotate off broad awscli keys).
 
 ---
 

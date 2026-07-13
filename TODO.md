@@ -23,12 +23,16 @@ via `wrangler secret put TURNSTILE_SECRET`.
 **Follow-ups:**
 - [x] **Mail transport** — AWS SES (not CF Email Sending). From `gifts@greerso.com` until
       giftbitcoin.app is optional-verified in SES.
-- [ ] Live smoke: fund testnet4 gift, email to external inbox via `/api/send`, confirm 3-seg 400.
+- [~] Live smoke: **gate path live 2026-07-13** — GET→405, 3-seg→400 `bad_link`,
+      missing Turnstile→400, home 200. **Still open:** fund testnet4 gift in browser,
+      send via UI to external inbox (Turnstile + funding + SES e2e).
 - [ ] Manual QA: 3-segment QR density scan on real phone cameras (~1.6–1.9 KB → 137×145
       modules at `ecc:'low'`).
 - [x] Design v2 handoff + fiat/BTC denom toggle + home/claim copy alignment (see
       `docs/superpowers/designs/`). Logo concepts B/C remain brand archive only (not shipped).
-- [ ] Prefer SES-only IAM user (least privilege) for Worker secrets (rotate off broad awscli keys).
+- [x] **SES-only IAM** — user `giftbitcoin-send-ses` (policy `GiftBitcoinSendSesOnly`:
+      `ses:SendEmail`/`ses:SendRawEmail` on `greerso.com` + `gifts@greerso.com` only).
+      Worker secrets rotated off broad `awscli` keys; CLI SES smoke MessageId ok.
 
 ---
 
